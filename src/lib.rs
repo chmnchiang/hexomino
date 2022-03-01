@@ -2,12 +2,12 @@
 
 use game::state::State;
 use log::*;
-use render::Renderer;
+//use render::Renderer;
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 mod game;
-mod render;
+//mod render;
 
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.
@@ -43,9 +43,9 @@ pub fn main_js() -> Result<(), JsValue> {
         .unwrap();
 
     let game_state = State::new();
-    let mut renderer = Renderer::new(context, window);
+    //let mut renderer = Renderer::new(context, window);
 
-    renderer.render(&game_state, (0.0, 0.0));
+    //renderer.render(&game_state, (0.0, 0.0));
     //info!("render");
     //for i in 0..1000 {
     //}

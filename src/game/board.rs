@@ -4,18 +4,19 @@ use super::{
     pos::Pos,
 };
 use anyhow::{ensure, Result};
+use itertools::Itertools;
 
 #[derive(Debug)]
 pub struct Board {
     board: [[bool; COLS]; ROWS],
-    hexos: Vec<PlacedHexo>,
+    placed_hexos: Vec<PlacedHexo>,
 }
 
 impl Board {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             board: [[false; COLS]; ROWS],
-            hexos: vec![],
+            placed_hexos: vec![],
         }
     }
 
@@ -23,7 +24,7 @@ impl Board {
         0 <= point.x && point.x < ROWS as i32 && 0 <= point.y && point.y < COLS as i32
     }
 
-    fn is_placed(&self, point: Pos) -> bool {
+    pub fn is_placed(&self, point: Pos) -> bool {
         assert!(Self::in_bound(point));
         self.board[point.x as usize][point.y as usize]
     }
@@ -51,7 +52,7 @@ impl Board {
     }
 
     /// Returns true if there is a position on the board the hexo can be placed.
-    fn can_place_somewhere(&self, hexo: Hexo) -> bool {
+    pub(super) fn can_place_somewhere(&self, hexo: Hexo) -> bool {
         hexo.all_orbit().any(|hexo| {
             self.all_empty_tiles()
                 .any(|point| self.can_place(hexo.move_to(point)))
@@ -59,15 +60,18 @@ impl Board {
     }
 
     pub(super) fn place(&mut self, hexo: PlacedHexo) -> Result<()> {
-        ensure!(self.can_place(hexo), "{hexo:?} can not be placed.");
-        for point in hexo.tiles() {
+        ensure!(
+            self.can_place(hexo.moved_hexo),
+            "{hexo:?} can not be placed."
+        );
+        for point in hexo.moved_hexo.tiles() {
             self.mark_placed(point);
         }
         Ok(())
     }
 
-    pub fn hexos(&self) -> &[PlacedHexo] {
-        self.hexos
+    pub fn placed_hexos(&self) -> &[PlacedHexo] {
+        &self.placed_hexos
     }
 }
 
@@ -84,7 +88,7 @@ mod test {
                 [true, true, false, false, true, true],
                 [true, true, false, false, true, true],
             ],
-            hexos: vec![],
+            placed_hexos: vec![],
         };
         check!(board.can_place_somewhere(Hexo::new(0)));
         let board = Board {
@@ -94,7 +98,7 @@ mod test {
                 [false, false, false, false, true, true],
                 [true, true, false, false, true, true],
             ],
-            hexos: vec![],
+            placed_hexos: vec![],
         };
         check!(board.can_place_somewhere(Hexo::new(0)));
 
@@ -105,9 +109,8 @@ mod test {
                 [false, false, true, false, false, false],
                 [true, false, false, false, true, false],
             ],
-            hexos: vec![],
+            placed_hexos: vec![],
         };
         check!(!board.can_place_somewhere(Hexo::new(0)));
     }
-
 }

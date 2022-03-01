@@ -171,12 +171,12 @@ impl MovedHexo {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PlacedHexo {
-    pub hexo: MovedHexo,
+    pub moved_hexo: MovedHexo,
     pub player: Player,
 }
 
 impl PlacedHexo {
-    pub fn new(hexo: MovedHexo, player: Player) -> Self {
-        Self { hexo, player }
+    pub fn new(moved_hexo: MovedHexo, player: Player) -> Self {
+        Self { moved_hexo, player }
     }
 }

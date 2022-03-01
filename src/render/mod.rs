@@ -9,7 +9,7 @@ use web_sys::{CanvasRenderingContext2d, Window};
 use crate::game::{
     constants::{COLS, HEXOS, N_HEXOS, ROWS},
     hexo::{Hexo, MovedHexo, RHexo, Transform},
-    point::Point as Coordinate,
+    pos::Pos as Coordinate,
     state::{GamePhase, Player, State},
 };
 
@@ -128,7 +128,7 @@ impl Renderer {
                 x: BLOCK_LENGTH,
                 y: BLOCK_LENGTH,
             };
-        self.with_affine( Affine::scale(0.6) * Affine::translate(-center) , |this| {
+        self.with_affine(Affine::scale(0.6) * Affine::translate(-center), |this| {
             this.render_tiles(hexo.tiles(), color);
         });
     }

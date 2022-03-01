@@ -1,19 +1,13 @@
+use std::mem;
+
 use anyhow::{bail, ensure, Result};
 
 use super::{
+    board::Board,
     constants::{COLS, ROWS},
     hexo::{Hexo, HexoSet, MovedHexo, PlacedHexo},
-    pos::Pos, board::Board,
+    pos::Pos,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GamePhase {
-    PickPhase,
-    PlacePhase,
-    EndPhase,
-}
-
-use GamePhase::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Player {
@@ -41,6 +35,12 @@ struct Inventory {
 }
 
 impl Inventory {
+    fn new() -> Self {
+        Self {
+            remaining_hexos: HexoSet::all(),
+            player_hexos: [HexoSet::empty(), HexoSet::empty()],
+        }
+    }
     fn add(&mut self, player: Player, hexo: Hexo) -> Result<()> {
         ensure!(
             self.remaining_hexos.has(hexo),
@@ -48,34 +48,160 @@ impl Inventory {
             player
         );
         self.remaining_hexos.remove(hexo);
-        self.player_hexos[self.current_player().id()].add(hexo);
+        self.player_hexos[player.id()].add(hexo);
+        Ok(())
     }
     fn remove(&mut self, player: Player, hexo: Hexo) -> Result<()> {
-        let current_player_hexos = self.player_hexos[self.current_player().id()];
+        let current_player_hexos = &mut self.player_hexos[player.id()];
         ensure!(
-            current_player_hexos.has(hexo.hexo()),
+            current_player_hexos.has(hexo),
             "Player {:?} tries to play {hexo:?}, but they do not have it.",
             player,
         );
-        current_player_hexos.remove(hexo.hexo());
+        current_player_hexos.remove(hexo);
+        Ok(())
+    }
+    fn hexos_of(&self, player: Player) -> &HexoSet {
+        &self.player_hexos[player.id()]
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GamePhase {
+    PickPhase,
+    PlacePhase,
+    EndPhase,
+}
+
+use GamePhase::*;
+
 pub enum _State {
-    PickState(PickState),
-    PlaceState(PlaceState),
-    EndState(EndState),
+    Pick(PickState),
+    Place(PlaceState),
+    End(EndState),
+    _Moved,
+}
+
+impl _State {
+    pub fn new() -> Self {
+        _State::Pick(PickState {
+            current_player: First,
+            inventory: Inventory::new(),
+        })
+    }
+    pub fn phase(&self) -> GamePhase {
+        match self {
+            _State::Pick(..) => PickPhase,
+            _State::Place(..) => PlacePhase,
+            _State::End(..) => EndPhase,
+            _State::_Moved => unreachable!(),
+        }
+    }
+    pub fn current_player(&self) -> Option<Player> {
+        match self {
+            _State::Pick(state) => Some(state.current_player),
+            _State::Place(state) => Some(state.current_player),
+            _State::End(..) => None,
+            _State::_Moved => unreachable!(),
+        }
+    }
+    pub fn play(&mut self, action: Action) -> Result<()> {
+        match (&mut *self, action) {
+            (_State::_Moved, _) => unreachable!(),
+            (_State::Pick(state), Action::Pick { hexo }) => {
+                state.pick(hexo)?;
+            }
+            (_State::Place(state), Action::Place { hexo }) => {
+                state.place(hexo)?;
+            }
+            _ => {
+                bail!("Action {action:?} is invalid during phase {:?}", self.phase())
+            }
+        }
+        self.next();
+        Ok(())
+    }
+    fn next(&mut self) {
+        use _State::*;
+        let state = mem::replace(self, _Moved);
+        *self = match state {
+            End(..) => {
+                panic!("The game had already ended");
+            }
+            Pick(state) => {
+                if state.inventory.remaining_hexos.is_empty() {
+                    Place(PlaceState {
+                        current_player: Second,
+                        inventory: state.inventory,
+                        board: Board::new(),
+                    })
+                } else {
+                    Pick(PickState {
+                        current_player: state.current_player.other(),
+                        inventory: state.inventory,
+                    })
+                }
+            }
+            Place(mut state) => {
+                state.current_player = state.current_player.other();
+                if !state.current_player_can_place() {
+                    End(EndState {
+                        winner: state.current_player.other(),
+                        board: state.board,
+                    })
+                } else {
+                    Place(state)
+                }
+            }
+            _Moved => unreachable!(),
+        }
+    }
 }
 
 pub struct PickState {
-    turn: Player,
+    current_player: Player,
     inventory: Inventory,
 }
 
+impl PickState {
+    fn current_player(&self) -> Player {
+        self.current_player
+    }
+    fn pick(&mut self, hexo: Hexo) -> Result<()> {
+        self.inventory.add(self.current_player, hexo)
+    }
+}
+
 pub struct PlaceState {
-    turn: Player,
+    current_player: Player,
     inventory: Inventory,
     board: Board,
+}
+
+impl PlaceState {
+    fn current_player(&self) -> Player {
+        self.current_player
+    }
+    fn place(&mut self, hexo: MovedHexo) -> Result<()> {
+        self.board.place(PlacedHexo {
+            moved_hexo: hexo,
+            player: self.current_player,
+        })?;
+        self.inventory.remove(self.current_player, hexo.hexo())?;
+        Ok(())
+    }
+    fn current_player_can_place(&self) -> bool {
+        let hexos = self.inventory.hexos_of(self.current_player);
+        if hexos.is_empty() {
+            return false;
+        }
+        for hexo in hexos.iter() {
+            if self.board.can_place_somewhere(hexo) {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 pub struct EndState {
@@ -194,13 +320,17 @@ impl State {
 
     fn place(&mut self, hexo: MovedHexo) -> Result<()> {
         assert!(self.phase == PlacePhase);
+        let current_player = self.current_player();
         let current_player_hexos = &mut self.player_hexos[self.current_player().id()];
         ensure!(
             current_player_hexos.has(hexo.hexo()),
             "Player {:?} tries to play {hexo:?} but does not have it.",
             self.current_player()
         );
-        self.board.place(hexo)?;
+        self.board.place(PlacedHexo {
+            moved_hexo: hexo,
+            player: current_player,
+        })?;
         current_player_hexos.remove(hexo.hexo());
         self.next();
         Ok(())

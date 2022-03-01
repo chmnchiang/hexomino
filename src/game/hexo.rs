@@ -1,13 +1,14 @@
 use super::{
     constants::{HEXOS, N_HEXOS},
-    point::Point,
+    pos::Pos,
+    state::Player,
 };
 use itertools::Itertools;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Hexo(usize);
 
-pub type Tiles = [Point; 6];
+pub type Tiles = [Pos; 6];
 
 impl Hexo {
     pub fn new(hexo_id: usize) -> Self {
@@ -19,24 +20,22 @@ impl Hexo {
         self.0
     }
 
-    pub fn tiles(self) -> &'static Tiles {
-        &HEXOS[self.id()].tiles
+    pub fn tiles(self) -> impl Iterator<Item = Pos> {
+        HEXOS[self.id()].tiles.iter().copied()
     }
 
-    pub fn apply(self, transform: Transform) -> MovedHexo {
-        MovedHexo::new(self, transform)
+    pub fn apply(self, transform: Transform) -> RHexo {
+        RHexo::new(self, transform)
     }
 
-    pub fn all_orbit(self) -> impl Iterator<Item = MovedHexo> {
+    pub fn all_orbit(self) -> impl Iterator<Item = RHexo> {
         IntoIterator::into_iter([false, true])
             .cartesian_product(0..4)
-            .map(move |(flipped, rotate)| {
-                self.apply(Transform {
-                    flipped,
-                    rotate,
-                    displacement: Point::new(0, 0),
-                })
-            })
+            .map(move |(flipped, rotate)| self.apply(Transform { flipped, rotate }))
+    }
+
+    pub fn all_hexos() -> impl Iterator<Item = Self> {
+        (0..N_HEXOS).map(|id| Hexo::new(id))
     }
 }
 
@@ -84,62 +83,100 @@ impl HexoSet {
 pub struct Transform {
     flipped: bool,
     rotate: i32,
-    displacement: Point,
 }
 
 impl Transform {
-    pub fn new(flipped: bool, rotate: i32, displacement: Point) -> Self {
+    pub const I: Self = Transform {
+        flipped: false,
+        rotate: 0,
+    };
+
+    pub fn new(flipped: bool, rotate: i32) -> Self {
         Self {
             flipped,
             rotate: rotate % 4,
-            displacement,
         }
     }
 
-    pub fn with_displacement(self, displacement: Point) -> Transform {
-        Transform {
-            displacement,
-            ..self
-        }
-    }
-
-    fn apply_on(self, mut tile: Point) -> Point {
+    fn apply_on(self, mut tile: Pos) -> Pos {
         if self.flipped {
             tile = tile.flip();
         }
         for _ in 0..self.rotate {
             tile = tile.rotate();
         }
-        tile + self.displacement
+        tile
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct MovedHexo {
+#[derive(Clone, Copy, Debug)]
+pub struct RHexo {
     hexo: Hexo,
     transform: Transform,
 }
 
-impl MovedHexo {
+impl RHexo {
     pub fn new(hexo: Hexo, transform: Transform) -> Self {
         Self { hexo, transform }
     }
 
-    pub fn move_to(&self, displacement: Point) -> MovedHexo {
-        MovedHexo {
-            hexo: self.hexo,
-            transform: self.transform.with_displacement(displacement),
-        }
+    pub fn move_to(self, displacement: Pos) -> MovedHexo {
+        MovedHexo::new(self, displacement)
     }
 
     pub fn hexo(&self) -> Hexo {
         self.hexo
     }
 
-    pub fn tiles<'a>(&'a self) -> impl Iterator<Item = Point> + 'a {
+    pub fn tiles<'a>(&'a self) -> impl Iterator<Item = Pos> + 'a {
         self.hexo()
             .tiles()
-            .iter()
-            .map(move |&tile| self.transform.apply_on(tile))
+            .map(move |tile| self.transform.apply_on(tile))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MovedHexo {
+    rhexo: RHexo,
+    displacement: Pos,
+}
+
+impl MovedHexo {
+    pub fn new(rhexo: RHexo, displacement: Pos) -> Self {
+        Self {
+            rhexo,
+            displacement,
+        }
+    }
+
+    pub fn move_to(self, displacement: Pos) -> MovedHexo {
+        MovedHexo {
+            displacement,
+            ..self
+        }
+    }
+
+    pub fn rhexo(&self) -> RHexo {
+        self.rhexo
+    }
+
+    pub fn hexo(&self) -> Hexo {
+        self.rhexo.hexo()
+    }
+
+    pub fn tiles<'a>(&'a self) -> impl Iterator<Item = Pos> + 'a {
+        self.rhexo.tiles().map(move |tile| tile + self.displacement)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PlacedHexo {
+    pub hexo: MovedHexo,
+    pub player: Player,
+}
+
+impl PlacedHexo {
+    pub fn new(hexo: MovedHexo, player: Player) -> Self {
+        Self { hexo, player }
     }
 }

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use game::State;
+use game::state::State;
 use log::*;
 use render::Renderer;
 use wasm_bindgen::{prelude::*, JsCast};
@@ -26,7 +26,7 @@ pub fn main_js() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
     wasm_logger::init(wasm_logger::Config::default());
-    info!("start main.");
+    info!("start main");
 
     let window = web_sys::window().unwrap();
     let document = window.document().unwrap();
@@ -45,7 +45,11 @@ pub fn main_js() -> Result<(), JsValue> {
     let game_state = State::new();
     let mut renderer = Renderer::new(context, window);
 
-    renderer.render(&game_state);
+    renderer.render(&game_state, (0.0, 0.0));
+    //info!("render");
+    //for i in 0..1000 {
+    //}
+    //info!("render completed");
 
     Ok(())
 }

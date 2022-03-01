@@ -15,22 +15,22 @@ pub const N_HEXOS: usize = 2;
 pub const HEXOS: [__Hexo; 2] = [
     __Hexo {
         tiles: [
-            Point { x: 0, y: 0 },
-            Point { x: 0, y: 1 },
-            Point { x: 0, y: 2 },
-            Point { x: 0, y: 3 },
-            Point { x: 1, y: 0 },
-            Point { x: 1, y: 1 },
+            Pos { x: 0, y: 0 },
+            Pos { x: 0, y: 1 },
+            Pos { x: 0, y: 2 },
+            Pos { x: 0, y: 3 },
+            Pos { x: 1, y: 0 },
+            Pos { x: 1, y: 1 },
         ],
     },
     __Hexo {
         tiles: [
-            Point { x: 0, y: 0 },
-            Point { x: 0, y: 1 },
-            Point { x: 0, y: 2 },
-            Point { x: 0, y: 3 },
-            Point { x: 0, y: 4 },
-            Point { x: 0, y: 5 },
+            Pos { x: 0, y: 0 },
+            Pos { x: 0, y: 1 },
+            Pos { x: 0, y: 2 },
+            Pos { x: 0, y: 3 },
+            Pos { x: 0, y: 4 },
+            Pos { x: 0, y: 5 },
         ],
     },
 ];

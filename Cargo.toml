@@ -37,6 +37,7 @@ wasm-logger = "0.2"
 anyhow = "1.0"
 assert2 = "0.3.6"
 itertools = "0.10"
+gloo-timers = "0.2.3"
 #getset = "0.1.2"
 
 # The `web-sys` crate allows you to interact with the various browser APIs,

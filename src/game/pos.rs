@@ -1,12 +1,14 @@
 use std::ops::Add;
 
 #[derive(Clone, Copy, Eq, PartialEq, Default, Debug)]
-pub struct Point {
+pub struct Pos {
     pub x: i32,
     pub y: i32,
 }
 
-impl Point {
+impl Pos {
+    pub const ZERO: Self = Pos { x: 0, y: 0 };
+
     pub fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
@@ -30,9 +32,9 @@ impl Point {
 macro_rules! impl_add_for_point {
     ($ltype:ty, $rtype: ty) => {
         impl Add<$rtype> for $ltype {
-            type Output = Point;
-            fn add(self, rhs: $rtype) -> Point {
-                Point {
+            type Output = Pos;
+            fn add(self, rhs: $rtype) -> Pos {
+                Pos {
                     x: self.x + rhs.x,
                     y: self.y + rhs.y,
                 }
@@ -41,7 +43,25 @@ macro_rules! impl_add_for_point {
     };
 }
 
-impl_add_for_point!(Point, Point);
-impl_add_for_point!(&Point, Point);
-impl_add_for_point!(Point, &Point);
-impl_add_for_point!(&Point, &Point);
+impl_add_for_point!(Pos, Pos);
+impl_add_for_point!(&Pos, Pos);
+impl_add_for_point!(Pos, &Pos);
+impl_add_for_point!(&Pos, &Pos);
+
+impl From<Pos> for piet::kurbo::Point {
+    fn from(point: Pos) -> Self {
+        piet::kurbo::Point {
+            x: point.x as f64,
+            y: point.y as f64,
+        }
+    }
+}
+
+impl From<Pos> for piet::kurbo::Vec2 {
+    fn from(point: Pos) -> Self {
+        piet::kurbo::Vec2 {
+            x: point.x as f64,
+            y: point.y as f64,
+        }
+    }
+}

@@ -69,14 +69,14 @@ def generate(n: int) -> list[Poly]:
 
 def hexo_to_repr(poly: Poly) -> str:
     assert len(poly) == 6
-    tiles_str = ', '.join(f'Point {{ x: {p.x}, y: {p.y} }}' for p in poly)
+    tiles_str = ', '.join(f'Pos {{ x: {p.x}, y: {p.y} }}' for p in poly)
     return f'__Hexo {{ tiles: [{tiles_str}] }}'
 
 if __name__ == '__main__':
     codegen_template = textwrap.dedent(
         '''\
         use crate::game::hexo::Tiles;
-        use crate::game::point::Point;
+        use crate::game::pos::Pos;
         pub struct __Hexo {{
             pub tiles: Tiles,
         }}

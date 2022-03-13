@@ -8,20 +8,20 @@ use itertools::Itertools;
 
 #[derive(Debug)]
 pub struct Board {
-    board: [[bool; COLS]; ROWS],
+    board: [[bool; ROWS]; COLS],
     placed_hexos: Vec<PlacedHexo>,
 }
 
 impl Board {
     pub(super) fn new() -> Self {
         Self {
-            board: [[false; COLS]; ROWS],
+            board: [[false; ROWS]; COLS],
             placed_hexos: vec![],
         }
     }
 
     fn in_bound(point: Pos) -> bool {
-        0 <= point.x && point.x < ROWS as i32 && 0 <= point.y && point.y < COLS as i32
+        0 <= point.x && point.x < COLS as i32 && 0 <= point.y && point.y < ROWS as i32
     }
 
     pub fn is_placed(&self, point: Pos) -> bool {
@@ -36,8 +36,8 @@ impl Board {
     }
 
     fn all_tiles(&self) -> impl Iterator<Item = Pos> {
-        (0..ROWS)
-            .cartesian_product(0..COLS)
+        (0..COLS)
+            .cartesian_product(0..ROWS)
             .map(|(x, y)| Pos::new(x as i32, y as i32))
     }
 
@@ -52,11 +52,21 @@ impl Board {
     }
 
     /// Returns true if there is a position on the board the hexo can be placed.
-    pub(super) fn can_place_somewhere(&self, hexo: Hexo) -> bool {
-        hexo.all_orbit().any(|hexo| {
-            self.all_empty_tiles()
-                .any(|point| self.can_place(hexo.move_to(point)))
-        })
+    pub fn try_find_placement(&self, hexo: Hexo) -> Option<MovedHexo> {
+        for rhexo in hexo.all_orbit() {
+            for pos in self.all_empty_tiles() {
+                let moved_hexo = rhexo.move_to(pos);
+                if self.can_place(moved_hexo) {
+                    return Some(moved_hexo);
+                }
+            }
+        }
+        None
+    }
+
+    /// Returns true if there is a position on the board the hexo can be placed.
+    pub fn can_place_somewhere(&self, hexo: Hexo) -> bool {
+        self.try_find_placement(hexo).is_some()
     }
 
     pub(super) fn place(&mut self, hexo: PlacedHexo) -> Result<()> {
@@ -67,6 +77,7 @@ impl Board {
         for point in hexo.moved_hexo.tiles() {
             self.mark_placed(point);
         }
+        self.placed_hexos.push(hexo);
         Ok(())
     }
 

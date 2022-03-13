@@ -39,7 +39,7 @@ impl Hexo {
     }
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct HexoSet {
     bitset: u64,
 }

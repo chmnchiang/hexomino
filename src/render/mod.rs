@@ -1,16 +1,17 @@
-use log::info;
 use piet::{
     kurbo::{Affine, Line, Point, Rect, Vec2},
     Color, RenderContext,
 };
 use piet_web::{Brush, WebRenderContext};
 use web_sys::{CanvasRenderingContext2d, Window};
+use yew::{Properties, Component, Context, Html, html};
 
 use crate::game::{
-    constants::{COLS, HEXOS, N_HEXOS, ROWS},
-    hexo::{Hexo, MovedHexo, RHexo, Transform},
+    board::Board,
+    constants::{COLS, N_HEXOS, ROWS},
+    hexo::Hexo,
     pos::Pos as Coordinate,
-    state::{GamePhase, Player, State},
+    state::{PickState, PlaceState, Player, State},
 };
 
 pub struct Renderer {
@@ -32,11 +33,23 @@ fn center_of_mass(hexo: &Hexo) -> Vec2 {
     res / 6.0
 }
 
+fn player_to_color(player: Option<Player>) -> Color {
+    match player {
+        Some(Player::First) => P1_BLOCK_COLOR,
+        Some(Player::Second) => P2_BLOCK_COLOR,
+        None => DEFAULT_BLOCK_COLOR,
+    }
+}
+
 impl Renderer {
     pub fn new(ctx: CanvasRenderingContext2d, window: Window) -> Self {
         Self {
             ctx: WebRenderContext::new(ctx, window),
         }
+    }
+
+    fn clear(&mut self) {
+        self.ctx.clear(None, Color::WHITE);
     }
 
     pub fn render<PT: Into<Vec2>>(&mut self, state: &State, shift: PT) {
@@ -45,22 +58,6 @@ impl Renderer {
             this.render_game_state(state);
         });
         self.ctx.finish().expect("render failed");
-    }
-
-    fn clear(&mut self) {
-        self.ctx.clear(None, Color::WHITE);
-    }
-
-    pub fn render_game_state(&mut self, state: &State) {
-        match state.phase() {
-            GamePhase::PickPhase => {
-                self.render_pick_phase(state);
-            }
-            GamePhase::PlacePhase => {
-                self.render_place_phase(state);
-            }
-            GamePhase::EndPhase => {}
-        }
     }
 
     pub fn render_tiles(&mut self, tiles: impl Iterator<Item = Coordinate>, color: Color) {
@@ -95,34 +92,7 @@ impl Renderer {
         );
     }
 
-    pub fn with_affine(&mut self, affine: Affine, func: impl FnOnce(&mut Self)) {
-        self.ctx.save().unwrap();
-        self.ctx.transform(affine);
-        func(self);
-        self.ctx.restore().unwrap();
-    }
-
-    pub fn render_pick_phase(&mut self, state: &State) {
-        for i in 0..N_HEXOS {
-            let lower = i * 7;
-            let upper = ((i + 1) * 7).min(N_HEXOS);
-            let hexos = (lower..upper).map(Hexo::new);
-            for (j, hexo) in hexos.enumerate() {
-                let x = j as f64 * 100.0 + 30.0;
-                let y = i as f64 * 120.0 + 30.0;
-                let color = match state.owner_of(hexo) {
-                    Some(Player::First) => P1_BLOCK_COLOR,
-                    Some(Player::Second) => P2_BLOCK_COLOR,
-                    None => DEFAULT_BLOCK_COLOR,
-                };
-                self.with_affine(Affine::translate((x, y)), |this| {
-                    this.render_hexo(hexo, color);
-                })
-            }
-        }
-    }
-
-    pub fn render_hexo(&mut self, hexo: Hexo, color: Color) {
+    pub fn render_centered_hexo(&mut self, hexo: Hexo, color: Color) {
         let center = center_of_mass(&hexo) * BLOCK_LENGTH
             - Vec2 {
                 x: BLOCK_LENGTH,
@@ -133,19 +103,52 @@ impl Renderer {
         });
     }
 
-    pub fn render_place_phase(&mut self, state: &State) {
-        self.render_board();
+    pub fn with_affine(&mut self, affine: Affine, func: impl FnOnce(&mut Self)) {
+        self.ctx.save().unwrap();
+        self.ctx.transform(affine);
+        func(self);
+        self.ctx.restore().unwrap();
+    }
+}
+
+impl Renderer {
+    pub fn render_game_state(&mut self, state: &State) {
+        match state {
+            State::Pick(state) => {
+                self.render_pick_phase(state);
+            }
+            State::Place(state) => {
+                self.render_place_phase(state);
+            }
+            State::End(_) => {}
+            _ => unreachable!(),
+        }
     }
 
-    pub fn render_board(&mut self) {
+    pub fn render_pick_phase(&mut self, state: &PickState) {
+        for i in 0..N_HEXOS {
+            let lower = i * 7;
+            let upper = ((i + 1) * 7).min(N_HEXOS);
+            let hexos = (lower..upper).map(Hexo::new);
+            for (j, hexo) in hexos.enumerate() {
+                let x = j as f64 * 100.0 + 30.0;
+                let y = i as f64 * 120.0 + 30.0;
+                self.with_affine(Affine::translate((x, y)), |this| {
+                    this.render_centered_hexo(hexo, player_to_color(state.owner_of(hexo)));
+                })
+            }
+        }
+    }
+
+    pub fn render_place_phase(&mut self, state: &PlaceState) {
+        self.render_board(state.board());
+    }
+
+    pub fn render_board(&mut self, board: &Board) {
         self.render_board_tiles();
-        self.render_tiles(
-            Hexo::new(10)
-                .apply(Transform::I)
-                .move_to(Coordinate::new(5, 7))
-                .tiles(),
-            P1_BLOCK_COLOR,
-        );
+        for hexo in board.placed_hexos() {
+            self.render_tiles(hexo.moved_hexo.tiles(), player_to_color(Some(hexo.player)))
+        }
     }
 
     pub fn render_board_tiles(&mut self) {

@@ -1,6 +1,7 @@
 use std::mem;
 
 use anyhow::{bail, ensure, Result};
+use getset::Getters;
 
 use super::{
     board::Board,
@@ -29,7 +30,8 @@ impl Player {
 
 use Player::*;
 
-struct Inventory {
+#[derive(PartialEq, Eq, Clone)]
+pub struct Inventory {
     remaining_hexos: HexoSet,
     player_hexos: [HexoSet; 2],
 }
@@ -61,7 +63,7 @@ impl Inventory {
         current_player_hexos.remove(hexo);
         Ok(())
     }
-    fn hexos_of(&self, player: Player) -> &HexoSet {
+    pub fn hexos_of(&self, player: Player) -> &HexoSet {
         &self.player_hexos[player.id()]
     }
 }
@@ -75,54 +77,70 @@ pub enum GamePhase {
 
 use GamePhase::*;
 
-pub enum _State {
+pub enum State {
     Pick(PickState),
     Place(PlaceState),
     End(EndState),
     _Moved,
 }
 
-impl _State {
+impl PartialEq for State {
+    fn eq(&self, other: &Self) -> bool {
+        false
+    }
+}
+
+impl State {
     pub fn new() -> Self {
-        _State::Pick(PickState {
+        State::Pick(PickState {
             current_player: First,
             inventory: Inventory::new(),
         })
     }
     pub fn phase(&self) -> GamePhase {
         match self {
-            _State::Pick(..) => PickPhase,
-            _State::Place(..) => PlacePhase,
-            _State::End(..) => EndPhase,
-            _State::_Moved => unreachable!(),
+            State::Pick(..) => PickPhase,
+            State::Place(..) => PlacePhase,
+            State::End(..) => EndPhase,
+            State::_Moved => unreachable!(),
         }
     }
     pub fn current_player(&self) -> Option<Player> {
         match self {
-            _State::Pick(state) => Some(state.current_player),
-            _State::Place(state) => Some(state.current_player),
-            _State::End(..) => None,
-            _State::_Moved => unreachable!(),
+            State::Pick(state) => Some(state.current_player),
+            State::Place(state) => Some(state.current_player),
+            State::End(..) => None,
+            State::_Moved => unreachable!(),
+        }
+    }
+    pub fn winner(&self) -> Option<Player> {
+        match self {
+            State::End(state) => Some(state.winner()),
+            State::_Moved => unreachable!(),
+            _ => None,
         }
     }
     pub fn play(&mut self, action: Action) -> Result<()> {
         match (&mut *self, action) {
-            (_State::_Moved, _) => unreachable!(),
-            (_State::Pick(state), Action::Pick { hexo }) => {
+            (State::_Moved, _) => unreachable!(),
+            (State::Pick(state), Action::Pick { hexo }) => {
                 state.pick(hexo)?;
             }
-            (_State::Place(state), Action::Place { hexo }) => {
+            (State::Place(state), Action::Place { hexo }) => {
                 state.place(hexo)?;
             }
             _ => {
-                bail!("Action {action:?} is invalid during phase {:?}", self.phase())
+                bail!(
+                    "Action {action:?} is invalid during phase {:?}",
+                    self.phase()
+                )
             }
         }
         self.next();
         Ok(())
     }
     fn next(&mut self) {
-        use _State::*;
+        use State::*;
         let state = mem::replace(self, _Moved);
         *self = match state {
             End(..) => {
@@ -158,17 +176,26 @@ impl _State {
     }
 }
 
+#[derive(Getters)]
 pub struct PickState {
+    #[getset(get = "pub")]
     current_player: Player,
+    #[getset(get = "pub")]
     inventory: Inventory,
 }
 
 impl PickState {
-    fn current_player(&self) -> Player {
-        self.current_player
-    }
     fn pick(&mut self, hexo: Hexo) -> Result<()> {
         self.inventory.add(self.current_player, hexo)
+    }
+    pub fn owner_of(&self, hexo: Hexo) -> Option<Player> {
+        if self.inventory.hexos_of(First).has(hexo) {
+            Some(First)
+        } else if self.inventory.hexos_of(Second).has(hexo) {
+            Some(Second)
+        } else {
+            None
+        }
     }
 }
 
@@ -179,9 +206,6 @@ pub struct PlaceState {
 }
 
 impl PlaceState {
-    fn current_player(&self) -> Player {
-        self.current_player
-    }
     fn place(&mut self, hexo: MovedHexo) -> Result<()> {
         self.board.place(PlacedHexo {
             moved_hexo: hexo,
@@ -202,6 +226,15 @@ impl PlaceState {
         }
         false
     }
+    pub fn current_player(&self) -> Player {
+        self.current_player
+    }
+    pub fn board(&self) -> &Board {
+        &self.board
+    }
+    pub fn inventory(&self) -> &Inventory {
+        &self.inventory
+    }
 }
 
 pub struct EndState {
@@ -209,8 +242,14 @@ pub struct EndState {
     board: Board,
 }
 
+impl EndState {
+    pub fn winner(&self) -> Player {
+        self.winner
+    }
+}
+
 #[derive(Debug)]
-pub struct State {
+pub struct __State {
     phase: GamePhase,
     board: Board,
     turn: Player,
@@ -225,7 +264,7 @@ pub enum Action {
     Place { hexo: MovedHexo },
 }
 
-impl State {
+impl __State {
     pub fn new() -> Self {
         Self {
             board: Board::new(),
@@ -342,21 +381,23 @@ mod tests {
     use crate::game::hexo::Transform;
 
     use super::*;
-    use assert2::{assert, check};
+    use assert2::{assert, check, let_assert};
 
     #[test]
     fn after_pick_adds_to_player_set() {
         let mut game = State::new();
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
-        check!(game.player_hexos[0].has(Hexo::new(0)));
+        let_assert!(State::Pick(state) = game);
+        check!(state.inventory.hexos_of(First).has(Hexo::new(0)));
     }
 
     #[test]
     fn after_pick_next_turn() {
         let mut game = State::new();
-        assert!(game.current_player() == First);
+        assert!(let Some(First) = game.current_player());
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
-        check!(game.current_player() == Second);
+        check!(game.phase() == PickPhase);
+        check!(let Some(Second) = game.current_player());
     }
 
     #[test]
@@ -364,8 +405,8 @@ mod tests {
         let mut game = State::new();
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(1) }));
-        check!(game.phase == PlacePhase);
-        check!(game.turn == Second);
+        check!(game.phase() == PlacePhase);
+        check!(let Some(Second) = game.current_player());
     }
 
     #[test]
@@ -380,16 +421,16 @@ mod tests {
         let mut game = State::new();
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(1) }));
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
-        assert!(game.phase == PlacePhase);
         assert!(let Ok(_) = game.play(Action::Place {
             hexo: Hexo::new(0).apply(Transform::I).move_to(Pos::ZERO)
         }));
-        check!(game.board.is_placed(Pos::new(0, 0)));
-        check!(game.board.is_placed(Pos::new(0, 1)));
-        check!(game.board.is_placed(Pos::new(0, 2)));
-        check!(game.board.is_placed(Pos::new(0, 3)));
-        check!(game.board.is_placed(Pos::new(1, 0)));
-        check!(game.board.is_placed(Pos::new(1, 1)));
+        let_assert!(State::Place(state) = game);
+        check!(state.board.is_placed(Pos::new(0, 0)));
+        check!(state.board.is_placed(Pos::new(0, 1)));
+        check!(state.board.is_placed(Pos::new(0, 2)));
+        check!(state.board.is_placed(Pos::new(0, 3)));
+        check!(state.board.is_placed(Pos::new(1, 0)));
+        check!(state.board.is_placed(Pos::new(1, 1)));
     }
 
     #[test]
@@ -397,18 +438,19 @@ mod tests {
         let mut game = State::new();
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(1) }));
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
-        assert!(game.phase == PlacePhase);
+        assert!(game.phase() == PlacePhase);
         assert!(let Ok(_) = game.play(Action::Place {
             hexo: Hexo::new(0)
                 .apply(Transform::new(true, 0))
                 .move_to(Pos::new(0, 3))
         }));
-        check!(game.board.is_placed(Pos::new(0, 0)));
-        check!(game.board.is_placed(Pos::new(0, 1)));
-        check!(game.board.is_placed(Pos::new(0, 2)));
-        check!(game.board.is_placed(Pos::new(0, 3)));
-        check!(game.board.is_placed(Pos::new(1, 2)));
-        check!(game.board.is_placed(Pos::new(1, 3)));
+        let_assert!(State::Place(state) = game);
+        check!(state.board.is_placed(Pos::new(0, 0)));
+        check!(state.board.is_placed(Pos::new(0, 1)));
+        check!(state.board.is_placed(Pos::new(0, 2)));
+        check!(state.board.is_placed(Pos::new(0, 3)));
+        check!(state.board.is_placed(Pos::new(1, 2)));
+        check!(state.board.is_placed(Pos::new(1, 3)));
     }
 
     #[test]
@@ -416,18 +458,19 @@ mod tests {
         let mut game = State::new();
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(1) }));
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
-        assert!(game.phase == PlacePhase);
+        assert!(game.phase() == PlacePhase);
         assert!(let Ok(_) = game.play(Action::Place {
             hexo: Hexo::new(0)
                 .apply(Transform::new(false, 1))
                 .move_to(Pos::new(0, 1))
         }));
-        check!(game.board.is_placed(Pos::new(0, 0)));
-        check!(game.board.is_placed(Pos::new(0, 1)));
-        check!(game.board.is_placed(Pos::new(1, 0)));
-        check!(game.board.is_placed(Pos::new(1, 1)));
-        check!(game.board.is_placed(Pos::new(2, 1)));
-        check!(game.board.is_placed(Pos::new(3, 1)));
+        let_assert!(State::End(state) = game);
+        check!(state.board.is_placed(Pos::new(0, 0)));
+        check!(state.board.is_placed(Pos::new(0, 1)));
+        check!(state.board.is_placed(Pos::new(1, 0)));
+        check!(state.board.is_placed(Pos::new(1, 1)));
+        check!(state.board.is_placed(Pos::new(2, 1)));
+        check!(state.board.is_placed(Pos::new(3, 1)));
     }
 
     #[test]
@@ -435,18 +478,19 @@ mod tests {
         let mut game = State::new();
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(1) }));
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
-        assert!(game.phase == PlacePhase);
+        assert!(game.phase() == PlacePhase);
         assert!(let Ok(_) = game.play(Action::Place {
             hexo: Hexo::new(0)
                 .apply(Transform::new(true, 2))
                 .move_to(Pos::new(1, 0))
         }));
-        check!(game.board.is_placed(Pos::new(0, 0)));
-        check!(game.board.is_placed(Pos::new(0, 1)));
-        check!(game.board.is_placed(Pos::new(1, 0)));
-        check!(game.board.is_placed(Pos::new(1, 1)));
-        check!(game.board.is_placed(Pos::new(1, 2)));
-        check!(game.board.is_placed(Pos::new(1, 3)));
+        let_assert!(State::Place(state) = game);
+        check!(state.board.is_placed(Pos::new(0, 0)));
+        check!(state.board.is_placed(Pos::new(0, 1)));
+        check!(state.board.is_placed(Pos::new(1, 0)));
+        check!(state.board.is_placed(Pos::new(1, 1)));
+        check!(state.board.is_placed(Pos::new(1, 2)));
+        check!(state.board.is_placed(Pos::new(1, 3)));
     }
 
     #[test]
@@ -454,14 +498,14 @@ mod tests {
         let mut game = State::new();
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(1) }));
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
-        assert!(game.phase == PlacePhase);
+        assert!(game.phase() == PlacePhase);
         assert!(let Ok(_) = game.play(Action::Place {
             hexo: Hexo::new(0)
                 .apply(Transform::new(false, 1))
                 .move_to(Pos::new(0, 3))
         }));
-        assert!(let EndPhase = game.phase);
-        assert!(game.winner == Some(Second));
+        assert!(game.phase() == EndPhase);
+        assert!(game.winner() == Some(Second));
     }
 
     #[test]
@@ -469,7 +513,7 @@ mod tests {
         let mut game = State::new();
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(1) }));
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
-        assert!(game.phase == PlacePhase);
+        assert!(game.phase() == PlacePhase);
         assert!(let Ok(_) = game.play(Action::Place {
             hexo: Hexo::new(0)
                 .apply(Transform::I)
@@ -480,8 +524,8 @@ mod tests {
                 .apply(Transform::new(false, 0))
                 .move_to(Pos::new(2, 0))
         }));
-        assert!(let EndPhase = game.phase);
-        assert!(game.winner == Some(First));
+        assert!(game.phase() == EndPhase);
+        assert!(game.winner() == Some(First));
     }
 
     #[test]
@@ -489,10 +533,11 @@ mod tests {
         let mut game = State::new();
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(1) }));
         assert!(let Ok(_) = game.play(Action::Pick { hexo: Hexo::new(0) }));
-        assert!(game.phase == PlacePhase);
+        assert!(game.phase() == PlacePhase);
         assert!(let Ok(_) = game.play(Action::Place {
             hexo: Hexo::new(0).apply(Transform::I).move_to(Pos::ZERO)
         }));
-        assert!(game.phase == PlacePhase);
+        assert!(game.phase() == PlacePhase);
+        assert!(game.winner().is_none());
     }
 }

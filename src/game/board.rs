@@ -6,7 +6,7 @@ use super::{
 use anyhow::{ensure, Result};
 use itertools::Itertools;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Board {
     board: [[bool; ROWS]; COLS],
     placed_hexos: Vec<PlacedHexo>,
@@ -46,7 +46,7 @@ impl Board {
             .filter(move |point| !self.is_placed(*point))
     }
 
-    fn can_place(&self, hexo: MovedHexo) -> bool {
+    pub fn can_place(&self, hexo: &MovedHexo) -> bool {
         hexo.tiles()
             .all(|tile| Self::in_bound(tile) && !self.is_placed(tile))
     }
@@ -56,7 +56,7 @@ impl Board {
         for rhexo in hexo.all_orbit() {
             for pos in self.all_empty_tiles() {
                 let moved_hexo = rhexo.move_to(pos);
-                if self.can_place(moved_hexo) {
+                if self.can_place(&moved_hexo) {
                     return Some(moved_hexo);
                 }
             }
@@ -71,10 +71,10 @@ impl Board {
 
     pub(super) fn place(&mut self, hexo: PlacedHexo) -> Result<()> {
         ensure!(
-            self.can_place(hexo.moved_hexo),
+            self.can_place(hexo.moved_hexo()),
             "{hexo:?} can not be placed."
         );
-        for point in hexo.moved_hexo.tiles() {
+        for point in hexo.moved_hexo().tiles() {
             self.mark_placed(point);
         }
         self.placed_hexos.push(hexo);
@@ -94,20 +94,24 @@ mod test {
     fn board_can_place_in_any() {
         let board = Board {
             board: [
-                [true, true, true, false, true, true],
-                [true, true, true, false, true, true],
-                [true, true, false, false, true, true],
-                [true, true, false, false, true, true],
+                [true, true, true, true],
+                [true, true, true, true],
+                [true, true, false, false],
+                [false, false, false, false],
+                [true, true, true, true],
+                [true, true, true, true],
             ],
             placed_hexos: vec![],
         };
         check!(board.can_place_somewhere(Hexo::new(0)));
         let board = Board {
             board: [
-                [true, true, true, true, true, true],
-                [true, true, true, true, true, true],
-                [false, false, false, false, true, true],
-                [true, true, false, false, true, true],
+                [true, true, false, true],
+                [true, true, false, true],
+                [true, true, false, false],
+                [true, true, false, false],
+                [true, true, true, true],
+                [true, true, true, true],
             ],
             placed_hexos: vec![],
         };
@@ -115,10 +119,12 @@ mod test {
 
         let board = Board {
             board: [
-                [false, false, true, false, false, false],
-                [true, false, false, false, true, false],
-                [false, false, true, false, false, false],
-                [true, false, false, false, true, false],
+                [false, true, false, true],
+                [false, false, false, false],
+                [true, false, true, false],
+                [false, false, false, false],
+                [false, true, false, true],
+                [false, false, false, false],
             ],
             placed_hexos: vec![],
         };

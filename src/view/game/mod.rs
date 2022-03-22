@@ -1,87 +1,31 @@
-use std::{cell::{RefCell, Cell}, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
-use anyhow::Context as _;
-use log::info;
-use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
-use yew::{html, Component, Context, Html, NodeRef, Properties};
+use log::debug;
+use yew::{html, Component, Context, Html, Properties};
 
-use self::{hexo_svg::HexoSvg, pick_inventory::PickInventory, turn_indicator::TurnIndicator};
-use crate::{
-    game::{
-        hexo::{Hexo, MovedHexo},
-        state::{Action, State, Player},
-    },
-    render::Renderer,
+use self::{
+    pick_view::PickView,
+    place_view::PlaceView,
+    state::{GameState, GameViewState, SharedGameViewState},
+};
+use crate::game::{
+    hexo::Hexo,
+    state::{Action, GamePhase, Player},
 };
 
+mod board_canvas;
 mod hexo_svg;
-mod pick_inventory;
+mod hexo_table;
+mod pick_view;
+mod place_view;
+mod state;
 mod turn_indicator;
-mod player;
 
 #[derive(PartialEq, Properties)]
 pub struct GameProps;
 
-type SharedGameState = Rc<RefCell<State>>;
-
 pub struct GameComponent {
-    canvas: NodeRef,
-    state: SharedGameState,
-}
-
-impl GameComponent {
-    fn init_canvas(&self, ctx: &Context<Self>) -> anyhow::Result<()> {
-        let window = web_sys::window().unwrap();
-        let canvas = self
-            .canvas
-            .cast::<HtmlCanvasElement>()
-            .context("cannot convert to canvas")?;
-        let context2d: CanvasRenderingContext2d = canvas
-            .get_context("2d")
-            .unwrap()
-            .unwrap()
-            .dyn_into()
-            .unwrap();
-        let mut renderer = Renderer::new(context2d, window);
-        let shared_state = Rc::clone(&self.state);
-        let link = ctx.link().clone();
-
-        let future = async move {
-            use crate::game::{hexo::Hexo, state::Action};
-            use log::info;
-            use std::time::Duration;
-            for hexo in Hexo::all_hexos() {
-                gloo_timers::future::sleep(Duration::from_millis(100)).await;
-                link.send_message(Action::Pick { hexo });
-            }
-            fn next_placement(state: &State) -> Option<MovedHexo> {
-                match state {
-                    State::Place(ref place_state) => {
-                        let placement = place_state
-                            .inventory()
-                            .hexos_of(place_state.current_player())
-                            .iter()
-                            .map(|hexo| place_state.board().try_find_placement(hexo))
-                            .filter_map(|x| x)
-                            .nth(0)
-                            .expect("nowhere to place, but the game did not end");
-                        Some(placement)
-                    }
-                    _ => None,
-                }
-            }
-            while let Some(placement) = {
-                let state = shared_state.borrow();
-                next_placement(&*state)
-            } {
-                info!("place = {placement:?}");
-                link.send_message(Action::Place { hexo: placement });
-            }
-        };
-        //wasm_bindgen_futures::spawn_local(future);
-        Ok(())
-    }
+    state: SharedGameViewState,
 }
 
 impl Component for GameComponent {
@@ -89,37 +33,43 @@ impl Component for GameComponent {
     type Properties = GameProps;
 
     fn create(_ctx: &Context<Self>) -> Self {
+        let mut game_state = GameState::new();
+        for hexo in Hexo::all_hexos() {
+            game_state.play(Action::Pick { hexo }).unwrap();
+        }
+
         Self {
-            canvas: NodeRef::default(),
-            state: Rc::new(RefCell::new(State::new())),
+            state: Rc::new(RefCell::new(GameViewState {
+                game_state: game_state,
+                me: Player::First,
+            })),
         }
     }
 
-    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
-        self.state.borrow_mut().play(msg);
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+        let res = self.state.borrow_mut().game_state.play(msg);
+        debug!("play = {res:?}");
         true
     }
 
-    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
-        if first_render {
-            self.init_canvas(ctx);
-        }
-    }
-
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let state = self.state.borrow();
-        info!("current player = {:?}", state.current_player());
+        let game_state = &self.state.borrow().game_state;
+        let send_pick = ctx.link().callback(|hexo| Action::Pick { hexo });
+        let send_place = ctx
+            .link()
+            .callback(|moved_hexo| Action::Place { hexo: moved_hexo });
         html! {
-            <div>
-            {
-                match *state {
-                    State::Pick(ref state) => html!{ <PickInventory inventory={state.inventory().clone()}/> },
+            <div> {
+                match game_state.phase() {
+                    GamePhase::Pick => html!{
+                        <PickView state={self.state.clone()} send_pick={send_pick}/>
+                    },
+                    GamePhase::Place => html!{
+                        <PlaceView state={self.state.clone()} send_place={send_place}/>
+                    },
                     _ => html!{},
                 }
-            }
-                //<TurnIndicator current_player={state.current_player()}/>
-            </div>
+            } </div>
         }
-        //<canvas ref={self.canvas.clone()} height="600" width="800"></canvas>
     }
 }

@@ -1,11 +1,15 @@
 use piet::kurbo::Vec2;
-use yew::{function_component, html, Html, Properties};
+use yew::{function_component, html, Html, Properties, classes, Callback};
 
 use crate::game::{hexo::Hexo, pos::Pos};
 
 #[derive(Properties, PartialEq)]
 pub struct HexoSvgProps {
     pub hexo: Hexo,
+    #[prop_or(None)]
+    pub style: Option<String>,
+    #[prop_or_else(Callback::noop)]
+    pub onclick: Callback<Hexo>,
 }
 
 fn center_of_mass(hexo: Hexo) -> Vec2 {
@@ -43,13 +47,12 @@ fn build_hexo_svg(hexo: Hexo) -> Html {
 
 #[function_component(HexoSvg)]
 pub fn hexo_svg(props: &HexoSvgProps) -> Html {
+    let hexo = props.hexo;
+    let onclick = props.onclick.reform(move |_| hexo);
     html! {
-        <div class="card">
-            <div class="card-image">
-                <figure class="image is-1by1">
-                    { build_hexo_svg(props.hexo) }
-                </figure>
-            </div>
+        <div style="width: 100%; height: 100%; border: 2px black solid"
+            class={classes![&props.style, "hexo-div"]} {onclick}>
+            { build_hexo_svg(props.hexo) }
         </div>
     }
 }

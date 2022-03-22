@@ -3,6 +3,7 @@ use yew::{html, Component, Context, Html, Properties};
 use crate::view::game::GameComponent;
 
 mod game;
+mod util;
 
 #[derive(PartialEq, Properties, Default)]
 pub struct MainProps;

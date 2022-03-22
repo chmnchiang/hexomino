@@ -4,14 +4,13 @@ use piet::{
 };
 use piet_web::{Brush, WebRenderContext};
 use web_sys::{CanvasRenderingContext2d, Window};
-use yew::{Properties, Component, Context, Html, html};
 
 use crate::game::{
     board::Board,
     constants::{COLS, N_HEXOS, ROWS},
     hexo::Hexo,
     pos::Pos as Coordinate,
-    state::{PickState, PlaceState, Player, State},
+    state::{GamePhase, Player, State},
 };
 
 pub struct Renderer {
@@ -113,19 +112,18 @@ impl Renderer {
 
 impl Renderer {
     pub fn render_game_state(&mut self, state: &State) {
-        match state {
-            State::Pick(state) => {
+        match state.phase() {
+            GamePhase::Pick => {
                 self.render_pick_phase(state);
             }
-            State::Place(state) => {
+            GamePhase::Place => {
                 self.render_place_phase(state);
             }
-            State::End(_) => {}
-            _ => unreachable!(),
+            GamePhase::End => {}
         }
     }
 
-    pub fn render_pick_phase(&mut self, state: &PickState) {
+    pub fn render_pick_phase(&mut self, state: &State) {
         for i in 0..N_HEXOS {
             let lower = i * 7;
             let upper = ((i + 1) * 7).min(N_HEXOS);
@@ -134,20 +132,26 @@ impl Renderer {
                 let x = j as f64 * 100.0 + 30.0;
                 let y = i as f64 * 120.0 + 30.0;
                 self.with_affine(Affine::translate((x, y)), |this| {
-                    this.render_centered_hexo(hexo, player_to_color(state.owner_of(hexo)));
+                    this.render_centered_hexo(
+                        hexo,
+                        player_to_color(state.inventory().owner_of(hexo)),
+                    );
                 })
             }
         }
     }
 
-    pub fn render_place_phase(&mut self, state: &PlaceState) {
+    pub fn render_place_phase(&mut self, state: &State) {
         self.render_board(state.board());
     }
 
     pub fn render_board(&mut self, board: &Board) {
         self.render_board_tiles();
         for hexo in board.placed_hexos() {
-            self.render_tiles(hexo.moved_hexo.tiles(), player_to_color(Some(hexo.player)))
+            self.render_tiles(
+                hexo.moved_hexo().tiles(),
+                player_to_color(Some(hexo.player())),
+            )
         }
     }
 

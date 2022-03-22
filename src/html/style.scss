@@ -1,6 +1,59 @@
-$player-me-color: #c02000
-$player-they-color: #20c000
+@use "sass:math";
 
-.player-me-picked-hexo {
-  background-color: #player-me-color
+$player-me-color: #c02000;
+$player-they-color: #20c000;
+
+.my-picked-hexo {
+  background-color: $player-me-color !important;
+}
+
+.their-picked-hexo {
+  background-color: $player-they-color !important;
+}
+
+td.square-td {
+  width: math.div(100%, 9);
+  position: relative;
+}
+
+td.square-td:after {
+  content: '';
+  display: block;
+  margin-top: 100%;
+}
+
+td.square-td .content {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+
+div.hexo-div {
+  background-color: white;
+  position: relative;
+  transition: transform 0.3s ease-in-out;
+}
+
+div.hexo-div:hover {
+  cursor: pointer;
+  z-index: 100;
+  filter: brightness(0.9);
+  transform: scale(1.5);
+}
+div.hexo-div:hover svg {
+  animation-name: hexo-rotate;
+  animation-duration: 8s;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+
+@keyframes hexo-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

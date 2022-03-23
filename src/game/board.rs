@@ -41,7 +41,7 @@ impl Board {
             .map(|(x, y)| Pos::new(x as i32, y as i32))
     }
 
-    fn all_empty_tiles<'a>(&'a self) -> impl Iterator<Item = Pos> + 'a {
+    fn all_empty_tiles(&self) -> impl Iterator<Item = Pos> + '_ {
         self.all_tiles()
             .filter(move |point| !self.is_placed(*point))
     }

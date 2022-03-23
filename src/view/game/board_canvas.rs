@@ -1,9 +1,7 @@
-use std::{
-    cell::RefCell,
-    rc::{Rc, Weak},
-};
+use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context as _, Result};
+use gloo_render::AnimationFrame;
 use log::{debug, error};
 use piet::{
     kurbo::{Affine, Line, Point, Rect, Vec2},
@@ -11,29 +9,32 @@ use piet::{
 };
 use piet_web::{Brush, WebRenderContext};
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent, Window};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
 use yew::{html, scheduler::Shared, Callback, Component, Context, NodeRef, Properties};
 
-use crate::game::{
-    board::Board,
-    constants::{self, COLS, ROWS},
-    hexo::{Hexo, MovedHexo, RHexo, Transform},
-    pos::Pos,
-    state::Player,
+use crate::{
+    game::{
+        constants::{self, COLS, ROWS},
+        hexo::{Hexo, MovedHexo, RHexo, Transform},
+        pos::Pos,
+        state::Player,
+    },
+    view::util::SharedLink,
 };
 
 use super::state::SharedGameViewState;
 
 #[derive(Properties, PartialEq)]
 pub struct BoardProps {
-    pub selected_hexo: Option<Hexo>,
     pub state: SharedGameViewState,
+    pub shared_link: SharedLink<BoardCanvas>,
     pub place_hexo_callback: Callback<MovedHexo>,
 }
 
 pub struct BoardCanvas {
     canvas: NodeRef,
     renderer: Option<Shared<BoardRenderer>>,
+    animation_handle: Option<AnimationFrame>,
 }
 
 pub enum BoardMsg {
@@ -58,44 +59,52 @@ impl Component for BoardCanvas {
     type Properties = BoardProps;
     type Message = BoardMsg;
 
-    fn create(ctx: &Context<Self>) -> Self {
+    fn create(_ctx: &Context<Self>) -> Self {
         Self {
             canvas: Default::default(),
             renderer: None,
+            animation_handle: None,
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         use BoardMsg::*;
-        match msg {
-            Select(hexo) => (),
-            MouseMoved(point) => {
-                guard::guard!(
-                    let Some(point) = self.relative_mouse_pos(point) else {
-                        error!("can't get relative mouse position");
-                        return false;
-                    }
-                );
-                guard::guard!(
-                    let Some(ref renderer) = self.renderer else {
-                        debug!("renderer is not ready");
-                        return false;
-                    }
-                );
-                renderer.borrow_mut().state.update_mouse_pos(point);
+
+        guard::guard!(
+            let Some(ref renderer) = self.renderer else {
+                debug!("renderer is not ready");
+                return false;
             }
-            Clicked => {
-                guard::guard!(
-                    let Some(ref renderer) = self.renderer else {
-                        debug!("renderer is not ready");
-                        return false;
+        );
+
+        {
+            let mut renderer = renderer.borrow_mut();
+            match msg {
+                Select(hexo) => {
+                    renderer.state.update_selected_hexo(hexo);
+                }
+                MouseMoved(point) => {
+                    guard::guard!(
+                        let Some(point) = self.relative_mouse_pos(point) else {
+                            error!("can't get relative mouse position");
+                            return false;
+                        }
+                    );
+                    renderer.state.update_mouse_pos(point);
+                }
+                Clicked => {
+                    let hexo = renderer.get_moved_hexo_on_click();
+                    if let Some(moved_hexo) = hexo {
+                        ctx.props().place_hexo_callback.emit(moved_hexo);
+                        renderer.state.clear_selected_hexo();
                     }
-                );
-                if let Some(moved_hexo) = renderer.borrow().get_moved_hexo_on_click() {
-                    ctx.props().place_hexo_callback.emit(moved_hexo);
                 }
             }
         }
+        let renderer = renderer.clone();
+        self.animation_handle = Some(gloo_render::request_animation_frame(move |_| {
+            renderer.borrow_mut().render((0.0, 0.0).into());
+        }));
         false
     }
 
@@ -114,7 +123,7 @@ impl Component for BoardCanvas {
             let renderer = BoardRenderer::create(context2d, Rc::clone(&ctx.props().state))
                 .expect("can't create renderer");
             let renderer = Rc::new(RefCell::new(renderer));
-            start_render_loop(Rc::downgrade(&renderer));
+            renderer.borrow_mut().render((0.0, 0.0).into());
             self.renderer = Some(renderer);
         }
     }
@@ -125,17 +134,9 @@ impl Component for BoardCanvas {
         let onmousemove = ctx.link().callback(|event: MouseEvent| {
             Self::Message::MouseMoved((event.x() as f64, event.y() as f64).into())
         });
-        if let Some(ref renderer) = &mut self.renderer.as_ref() {
-            let renderer_state = &mut renderer.borrow_mut().state;
-            debug!("check {:?}", ctx.props().selected_hexo);
-            if let Some(hexo) = ctx.props().selected_hexo {
-                renderer_state.update_selected_hexo(hexo);
-            } else {
-                renderer_state.clear_selected_hexo();
-            }
-        }
         let onclick = ctx.link().callback(|_| BoardMsg::Clicked);
 
+        ctx.props().shared_link.install(ctx.link().clone());
         html! {
             <canvas ref={self.canvas.clone()} width={width} height={height} {onmousemove} {onclick}/>
         }
@@ -194,18 +195,6 @@ fn player_to_color(player: Option<Player>) -> Color {
     }
 }
 
-fn start_render_loop(renderer_weak: Weak<RefCell<BoardRenderer>>) {
-    let handle = gloo_render::request_animation_frame(move |_| {
-        let renderer = renderer_weak.upgrade();
-        if let Some(renderer) = renderer {
-            renderer.borrow_mut().render((0.0, 0.0).into());
-            start_render_loop(renderer_weak);
-            //gloo_render::request_animation_frame(move |_| start_render_loop(renderer_weak));
-        }
-    });
-    std::mem::forget(handle);
-}
-
 #[derive(Clone, Copy)]
 enum MousePos {
     Free(Point),
@@ -225,11 +214,11 @@ impl MousePos {
         }
     }
 
-    fn to_render_point(&self) -> Point {
+    fn to_render_point(self) -> Point {
         use MousePos::*;
         match self {
             Free(point) => Point::new(point.x - BLOCK_LENGTH / 2.0, point.y - BLOCK_LENGTH / 2.0),
-            Locked(Pos { x, y }) => Point::new(*x as f64 * BLOCK_LENGTH, *y as f64 * BLOCK_LENGTH),
+            Locked(Pos { x, y }) => Point::new(x as f64 * BLOCK_LENGTH, y as f64 * BLOCK_LENGTH),
         }
     }
 }
@@ -254,14 +243,8 @@ impl BoardRenderer {
         self.ctx.clear(None, Color::WHITE);
     }
 
-    //pub fn start_rendering(&self) {
-    //gloo_render::request_animation_frame(|_| {
-    //self.render((0.0, 0.0).into());
-    //gloo_render::request_animation_frame(|_| self.render
-    //});
-    //}
-
     pub fn render(&mut self, shift: Vec2) {
+        debug!("call render");
         self.clear();
         self.with_affine(Affine::translate(shift), |this| {
             this.render_board_tiles();
@@ -356,20 +339,21 @@ impl BoardRenderer {
         let real_point = mouse_pos.to_render_point();
         let current_player = self.game_view_state.borrow().game_state.current_player();
         self.with_translate((real_point.x - 0.0, real_point.y - 0.0), |this| {
-            if let Some(rhexo) = this.state.rhexo {
-                this.render_tiles(rhexo.tiles(), player_to_color(current_player));
-            }
+            this.render_tiles(rhexo.tiles(), player_to_color(current_player));
         })
     }
 
     fn get_moved_hexo_on_click(&self) -> Option<MovedHexo> {
         guard::guard!(let Some(rhexo) = self.state.rhexo else { return None });
-        let mouse_pos = MousePos::from_point(self.state.mouse_pos);
         guard::guard!(let MousePos::Locked(pos) = MousePos::from_point(self.state.mouse_pos) else { return None });
         let moved_hexo = rhexo.move_to(pos);
-        let state = self.game_view_state.borrow();
-        let game_state = &state.game_state;
-        if game_state.board().can_place(&moved_hexo) {
+        if self
+            .game_view_state
+            .borrow()
+            .game_state
+            .board()
+            .can_place(&moved_hexo)
+        {
             Some(moved_hexo)
         } else {
             None

@@ -1,29 +1,20 @@
-use std::{cell::RefCell, rc::Rc};
-
-use anyhow::Context as _;
-use itertools::Itertools;
-use log::info;
-use piet::kurbo::Vec2;
-use wasm_bindgen::JsCast;
-use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement};
-use yew::{
-    function_component, html, use_effect, use_effect_with_deps, use_mut_ref, use_node_ref,
-    use_reducer, Callback, Component, Context, Html, NodeRef, Properties, Reducible,
-};
+use yew::{html, Callback, Component, Context, Html, Properties};
 
 use crate::{
     game::{
-        constants,
         hexo::{Hexo, MovedHexo},
         state::Player,
     },
-    render::Renderer,
-    view::game::{hexo_table::{HexoTable, StyledHexo}, board_canvas::BoardCanvas},
+    view::{
+        game::{
+            board_canvas::{BoardCanvas, BoardMsg},
+            hexo_table::{HexoTable, StyledHexo},
+        },
+        util::{SharedLink, WeakLink},
+    },
 };
 
-use super::{
-    turn_indicator::TurnIndicator, state::SharedGameViewState,
-};
+use super::{state::SharedGameViewState, turn_indicator::TurnIndicator};
 
 #[derive(Properties, PartialEq)]
 pub struct PlaceViewProps {
@@ -39,19 +30,20 @@ struct PlaceViewState {
 pub enum PlaceAction {
     Select(Hexo),
     Placed(MovedHexo),
+    SetLink(WeakLink<BoardCanvas>),
 }
 
 #[derive(Default)]
 pub struct PlaceView {
-    renderer: Option<Renderer>,
     state: PlaceViewState,
+    board_weak_link: WeakLink<BoardCanvas>,
 }
 
 impl Component for PlaceView {
     type Message = PlaceAction;
     type Properties = PlaceViewProps;
 
-    fn create(ctx: &Context<Self>) -> Self {
+    fn create(_ctx: &Context<Self>) -> Self {
         Default::default()
     }
 
@@ -60,10 +52,19 @@ impl Component for PlaceView {
         match msg {
             Select(hexo) => {
                 self.state.selected_hexo = Some(hexo);
+                self.board_weak_link
+                    .upgrade()
+                    .unwrap()
+                    .get()
+                    .send_message(BoardMsg::Select(hexo));
             }
             Placed(moved_hexo) => {
                 ctx.props().send_place.emit(moved_hexo);
                 self.state.selected_hexo = None;
+            }
+            SetLink(link) => {
+                self.board_weak_link = link;
+                return false;
             }
         }
         true
@@ -73,13 +74,15 @@ impl Component for PlaceView {
         let state = ctx.props().state.borrow();
         let game_state = &state.game_state;
         let current_player = game_state.current_player().unwrap();
-        let select_onclick = ctx.link().callback(|hexo| PlaceAction::Select(hexo));
-        let place_hexo_callback =
-            ctx.link().callback(|hexo| PlaceAction::Placed(hexo));
+        let select_onclick = ctx.link().callback(PlaceAction::Select);
+        let shared_link = SharedLink::<BoardCanvas>::new();
+        ctx.link()
+            .send_message(PlaceAction::SetLink(shared_link.downgrade()));
 
-        let me = state.me;
+        let place_hexo_callback = ctx.link().callback(PlaceAction::Placed);
+
+        let _me = state.me;
         let player_hexos = game_state.inventory().hexos_of(current_player).iter();
-
         let styled_hexos = if let Some(selected_hexo) = self.state.selected_hexo {
             player_hexos
                 .map(|hexo| {
@@ -102,7 +105,7 @@ impl Component for PlaceView {
         html! {
             <>
                 <TurnIndicator current_player={game_state.current_player()}/>
-                <BoardCanvas state={ctx.props().state.clone()} selected_hexo={self.state.selected_hexo} {place_hexo_callback}/>
+                <BoardCanvas state={ctx.props().state.clone()} {shared_link} {place_hexo_callback}/>
                 <HexoTable {styled_hexos} on_hexo_click={select_onclick}/>
             </>
         }

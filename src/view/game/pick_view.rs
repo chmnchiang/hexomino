@@ -1,5 +1,4 @@
 use super::{
-    hexo_svg::{self, HexoSvg},
     state::SharedGameViewState,
     turn_indicator::TurnIndicator,
 };

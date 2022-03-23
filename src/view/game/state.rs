@@ -10,7 +10,7 @@ pub struct GameViewState {
 }
 
 impl PartialEq for GameViewState {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         false
     }
 }

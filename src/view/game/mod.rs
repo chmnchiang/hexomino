@@ -40,7 +40,7 @@ impl Component for GameComponent {
 
         Self {
             state: Rc::new(RefCell::new(GameViewState {
-                game_state: game_state,
+                game_state,
                 me: Player::First,
             })),
         }

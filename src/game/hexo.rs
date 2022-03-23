@@ -36,7 +36,7 @@ impl Hexo {
     }
 
     pub fn all_hexos() -> impl Iterator<Item = Self> {
-        (0..N_HEXOS).map(|id| Hexo::new(id))
+        (0..N_HEXOS).map(Hexo::new)
     }
 }
 
@@ -87,7 +87,7 @@ impl RHexo {
         MovedHexo::new(self, displacement)
     }
 
-    pub fn tiles<'a>(&'a self) -> impl Iterator<Item = Pos> + 'a {
+    pub fn tiles(&self) -> impl Iterator<Item = Pos> + '_ {
         self.hexo()
             .tiles()
             .map(move |tile| self.transform.apply_on(tile))
@@ -121,7 +121,7 @@ impl MovedHexo {
         self.rhexo.hexo()
     }
 
-    pub fn tiles<'a>(&'a self) -> impl Iterator<Item = Pos> + 'a {
+    pub fn tiles(&self) -> impl Iterator<Item = Pos> + '_ {
         self.rhexo.tiles().map(move |tile| tile + self.displacement)
     }
 }
@@ -173,7 +173,7 @@ impl HexoSet {
         (self.bitset & (1u64 << hexo.id())) != 0
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = Hexo> + 'a {
+    pub fn iter(&self) -> impl Iterator<Item = Hexo> + '_ {
         (0..N_HEXOS)
             .map(Hexo::new)
             .filter(move |hexo| self.has(*hexo))

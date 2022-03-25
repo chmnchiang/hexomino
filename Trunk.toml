@@ -1,6 +1,7 @@
 [build]
 target = "src/html/index.html"
 dist = "dist"
+public_url = "./"
 
 [watch]
 watch = ['.']

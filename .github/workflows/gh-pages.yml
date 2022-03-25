@@ -1,0 +1,38 @@
+name: github pages
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: setup-rust-toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: beta
+          override: true
+          target: wasm32-unknown-unknown
+
+      - name: install-trunk
+        uses: jetli/trunk-action@v0.1.0
+        with:
+          # Optional version of trunk to install(eg. 'v0.8.1', 'latest')
+          version: 'latest'
+
+      - name: run-trunk
+        run: trunk build --release
+
+      - name: deploy-gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist

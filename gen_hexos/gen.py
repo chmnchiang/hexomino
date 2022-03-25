@@ -24,7 +24,7 @@ class Point:
     def __lt__(self, they):
         return (self.x, self.y) < (they.x, they.y)
 
-Poly = tuple[Point, ...]
+Poly = typing.Tuple[Point, ...]
 
 def reflect(poly: Poly) -> Poly:
     return tuple(p.reflect() for p in poly)
@@ -55,7 +55,7 @@ def generate_from_poly(poly) -> typing.Generator[Poly, None, None]:
             new_poly = normalize((*poly, q))
             yield new_poly
 
-def generate(n: int) -> list[Poly]:
+def generate(n: int) -> typing.List[Poly]:
     if n == 1:
         return [(Point(0, 0),)]
 

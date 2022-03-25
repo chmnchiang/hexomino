@@ -59,6 +59,22 @@ impl Transform {
         }
     }
 
+    pub fn flip(self) -> Self {
+        let Self {flipped, rotate} = self;
+        Self {
+            flipped: !flipped,
+            rotate,
+        }
+    }
+
+    pub fn rotate(self) -> Self {
+        let Self {flipped, rotate} = self;
+        Self {
+            flipped,
+            rotate: (rotate + 1) % 4,
+        }
+    }
+
     fn apply_on(self, mut tile: Pos) -> Pos {
         if self.flipped {
             tile = tile.flip();
@@ -72,9 +88,9 @@ impl Transform {
 
 #[derive(Clone, Copy, Debug, CopyGetters)]
 pub struct RHexo {
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     hexo: Hexo,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     transform: Transform,
 }
 
@@ -87,6 +103,16 @@ impl RHexo {
         MovedHexo::new(self, displacement)
     }
 
+    pub fn flip(mut self) -> RHexo {
+        self.transform = self.transform.flip();
+        self
+    }
+
+    pub fn rotate(mut self) -> RHexo {
+        self.transform = self.transform.rotate();
+        self
+    }
+
     pub fn tiles(&self) -> impl Iterator<Item = Pos> + '_ {
         self.hexo()
             .tiles()
@@ -96,9 +122,9 @@ impl RHexo {
 
 #[derive(Debug, Clone, Copy, Getters, CopyGetters)]
 pub struct MovedHexo {
-    #[getset(get="pub")]
+    #[getset(get = "pub")]
     rhexo: RHexo,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     displacement: Pos,
 }
 
@@ -128,9 +154,9 @@ impl MovedHexo {
 
 #[derive(Debug, Clone, Copy, Getters, CopyGetters)]
 pub struct PlacedHexo {
-    #[getset(get="pub")]
+    #[getset(get = "pub")]
     moved_hexo: MovedHexo,
-    #[getset(get_copy="pub")]
+    #[getset(get_copy = "pub")]
     player: Player,
 }
 
@@ -179,4 +205,3 @@ impl HexoSet {
             .filter(move |hexo| self.has(*hexo))
     }
 }
-

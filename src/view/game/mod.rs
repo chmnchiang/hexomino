@@ -34,9 +34,6 @@ impl Component for GameComponent {
 
     fn create(_ctx: &Context<Self>) -> Self {
         let mut game_state = GameState::new();
-        for hexo in Hexo::all_hexos() {
-            game_state.play(Action::Pick { hexo }).unwrap();
-        }
 
         Self {
             state: Rc::new(RefCell::new(GameViewState {

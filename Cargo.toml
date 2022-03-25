@@ -53,6 +53,7 @@ features = [
   "CanvasRenderingContext2d",
   "console",
   "DomRect",
+  "KeyboardEvent",
 ]
 
 [dependencies.gloo-timers]

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use anyhow::{Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use gloo_render::AnimationFrame;
 use log::{debug, error};
 use piet::{
@@ -8,8 +8,10 @@ use piet::{
     Color, RenderContext,
 };
 use piet_web::{Brush, WebRenderContext};
-use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
+use wasm_bindgen::{prelude::Closure, JsCast};
+use web_sys::{
+    window, CanvasRenderingContext2d, Event, HtmlCanvasElement, KeyboardEvent, MouseEvent,
+};
 use yew::{html, scheduler::Shared, Callback, Component, Context, NodeRef, Properties};
 
 use crate::{
@@ -35,12 +37,14 @@ pub struct BoardCanvas {
     canvas: NodeRef,
     renderer: Option<Shared<BoardRenderer>>,
     animation_handle: Option<AnimationFrame>,
+    key_down_listener: Option<KeyDownListener>,
 }
 
 pub enum BoardMsg {
     Select(Hexo),
     MouseMoved(Point),
     Clicked,
+    KeyDown(String),
 }
 
 impl BoardCanvas {
@@ -64,6 +68,7 @@ impl Component for BoardCanvas {
             canvas: Default::default(),
             renderer: None,
             animation_handle: None,
+            key_down_listener: None,
         }
     }
 
@@ -99,6 +104,11 @@ impl Component for BoardCanvas {
                         renderer.state.clear_selected_hexo();
                     }
                 }
+                KeyDown(event) => match event.as_str() {
+                    "CapsLock" => renderer.state.flip(),
+                    "Shift" => renderer.state.rotate(),
+                    _ => (),
+                },
             }
         }
         let renderer = renderer.clone();
@@ -109,23 +119,28 @@ impl Component for BoardCanvas {
     }
 
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
-        if first_render {
-            let canvas = self
-                .canvas
-                .cast::<HtmlCanvasElement>()
-                .expect("cannot convert to canvas");
-            let context2d: CanvasRenderingContext2d = canvas
-                .get_context("2d")
-                .unwrap()
-                .unwrap()
-                .dyn_into()
-                .unwrap();
-            let renderer = BoardRenderer::create(context2d, Rc::clone(&ctx.props().state))
-                .expect("can't create renderer");
-            let renderer = Rc::new(RefCell::new(renderer));
-            renderer.borrow_mut().render((0.0, 0.0).into());
-            self.renderer = Some(renderer);
+        if !first_render {
+            return;
         }
+        let canvas = self
+            .canvas
+            .cast::<HtmlCanvasElement>()
+            .expect("cannot convert to canvas");
+        let context2d: CanvasRenderingContext2d = canvas
+            .get_context("2d")
+            .unwrap()
+            .unwrap()
+            .dyn_into()
+            .unwrap();
+        let renderer = BoardRenderer::create(context2d, Rc::clone(&ctx.props().state))
+            .expect("can't create renderer");
+        let renderer = Rc::new(RefCell::new(renderer));
+        renderer.borrow_mut().render((0.0, 0.0).into());
+        self.renderer = Some(renderer);
+        let key_down_callback = ctx
+            .link()
+            .callback(|event: KeyboardEvent| BoardMsg::KeyDown(event.key()));
+        self.key_down_listener = Some(KeyDownListener::register(key_down_callback).unwrap());
     }
 
     fn view(&self, ctx: &Context<Self>) -> yew::Html {
@@ -135,10 +150,12 @@ impl Component for BoardCanvas {
             Self::Message::MouseMoved((event.x() as f64, event.y() as f64).into())
         });
         let onclick = ctx.link().callback(|_| BoardMsg::Clicked);
-
         ctx.props().shared_link.install(ctx.link().clone());
         html! {
-            <canvas ref={self.canvas.clone()} width={width} height={height} {onmousemove} {onclick}/>
+            <>
+                <canvas ref={self.canvas.clone()} width={width} height={height} {onmousemove} {onclick}/>
+                <p> {"<Shift> = Rotate, <CapsLock> = Flip"} </p>
+            </>
         }
     }
 }
@@ -165,10 +182,10 @@ impl RendererState {
         self.rhexo = None;
     }
     fn flip(&mut self) {
-        unimplemented!();
+        self.rhexo = self.rhexo.map(|rhexo| rhexo.flip());
     }
     fn rotate(&mut self) {
-        unimplemented!();
+        self.rhexo = self.rhexo.map(|rhexo| rhexo.rotate());
     }
 }
 
@@ -345,7 +362,8 @@ impl BoardRenderer {
 
     fn get_moved_hexo_on_click(&self) -> Option<MovedHexo> {
         guard::guard!(let Some(rhexo) = self.state.rhexo else { return None });
-        guard::guard!(let MousePos::Locked(pos) = MousePos::from_point(self.state.mouse_pos) else { return None });
+        guard::guard!(let MousePos::Locked(pos) =
+            MousePos::from_point(self.state.mouse_pos) else { return None });
         let moved_hexo = rhexo.move_to(pos);
         if self
             .game_view_state
@@ -358,5 +376,41 @@ impl BoardRenderer {
         } else {
             None
         }
+    }
+}
+
+struct KeyDownListener {
+    closure: Closure<dyn Fn(KeyboardEvent)>,
+}
+
+impl KeyDownListener {
+    fn register(callback: Callback<KeyboardEvent>) -> Result<Self> {
+        debug!("register");
+        let closure = Closure::wrap(Box::new(move |e| {
+            debug!("e = {:?}", e);
+            callback.emit(e);
+        }) as Box<dyn Fn(KeyboardEvent)>);
+        if let Err(_) = window()
+            .unwrap()
+            .document()
+            .unwrap()
+            .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref())
+        {
+            bail!("Can't add onkeydown event listener");
+        }
+        Ok(Self { closure })
+    }
+}
+
+impl Drop for KeyDownListener {
+    fn drop(&mut self) {
+        let _ = window()
+            .unwrap()
+            .document()
+            .unwrap()
+            .remove_event_listener_with_callback(
+                "onkeydown",
+                self.closure.as_ref().unchecked_ref(),
+            );
     }
 }

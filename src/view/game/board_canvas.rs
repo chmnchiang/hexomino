@@ -192,8 +192,8 @@ impl RendererState {
 const BLOCK_LENGTH: f64 = 30.0;
 const BLOCK_BORDER_COLOR: Color = Color::BLACK;
 const BLOCK_BORDER_WIDTH: f64 = 2.0;
-const P1_BLOCK_COLOR: Color = Color::rgb8(192, 32, 0);
-const P2_BLOCK_COLOR: Color = Color::rgb8(32, 192, 0);
+const P1_BLOCK_COLOR: Color = Color::rgb8(32, 192, 0);
+const P2_BLOCK_COLOR: Color = Color::rgb8(192, 32, 0);
 const DEFAULT_BLOCK_COLOR: Color = Color::GRAY;
 
 fn center_of_mass(hexo: &Hexo) -> Vec2 {

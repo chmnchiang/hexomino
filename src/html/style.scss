@@ -1,7 +1,7 @@
 @use "sass:math";
 
-$player-me-color: #c02000;
-$player-they-color: #20c000;
+$player-me-color: rgb(32, 192, 0);
+$player-they-color: rgb(192, 32, 0);
 
 .my-picked-hexo {
   background-color: $player-me-color !important;

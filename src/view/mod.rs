@@ -1,29 +1,66 @@
 use yew::{html, Component, Context, Html, Properties};
 
-use crate::view::game::GameComponent;
+use crate::view::{game::GameView, menu::MenuView};
 
 mod game;
+mod menu;
 mod util;
+mod window_events;
 
 #[derive(PartialEq, Properties, Default)]
 pub struct MainProps;
 
-pub struct MainComponent;
+pub struct MainView {
+    current_page: Page,
+}
 
-impl Component for MainComponent {
-    type Message = ();
+pub enum GameMode {
+    AI,
+    TwoPlayer,
+}
+
+pub enum MainMsg {
+    StartGame(GameMode),
+}
+
+pub enum Page {
+    Menu,
+    Game,
+}
+
+impl Component for MainView {
+    type Message = MainMsg;
     type Properties = MainProps;
 
     fn create(_ctx: &Context<Self>) -> Self {
-        Self
+        Self {
+            //current_page: Page::Menu,
+            current_page: Page::Game,
+        }
     }
 
-    fn view(&self, _ctx: &Context<Self>) -> Html {
+    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+        use MainMsg::*;
+        match msg {
+            StartGame(_mode) => self.current_page = Page::Game,
+        }
+        true
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let on_choose = ctx.link().callback(|mode| MainMsg::StartGame(mode));
+        let inner = match self.current_page {
+            Page::Menu => html! { <MenuView {on_choose}/> },
+            Page::Game => html! { <GameView/> },
+        };
         html! {
-            <section class="section">
-                <p> { "Main view" } </p>
-                <GameComponent></GameComponent>
-            </section>
+            <main>
+                <section class="section">
+                    <div class="container is-widescreen">
+                        { inner }
+                    </div>
+                </section>
+            </main>
         }
     }
 }

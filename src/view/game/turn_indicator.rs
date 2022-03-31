@@ -24,8 +24,8 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
         "{} {} {} {}",
         -MARGIN,
         -MARGIN,
-        WIDTH + MARGIN,
-        HEIGHT + MARGIN
+        WIDTH + MARGIN * 2,
+        HEIGHT + MARGIN * 2,
     );
     let shape_player_1 = format!(
         "M0 0 H{} l{} {} H{} Z",
@@ -51,7 +51,7 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
     let player1_style = format!("fill: rgba(30, 180, 0, {})", player1_opacity);
     let player2_style = format!("fill: rgba(180, 30, 0, {})", player2_opacity);
     html! {
-        <p>
+        <div style="width: 100%">
             <svg width="100%" viewBox={viewbox}>
             <path d={shape_player_1} style={player1_style}/>
             <path d={shape_player_2} style={player2_style}/>
@@ -60,6 +60,6 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
             <text x={(WIDTH - FONT_PADDING).to_string()} y={(HEIGHT/2).to_string()} font-size="80"
                 text-anchor="end" alignment-baseline="central">{"Player1"}</text>
             </svg>
-        </p>
+        </div>
     }
 }

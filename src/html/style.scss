@@ -3,6 +3,14 @@
 $player-me-color: rgb(32, 192, 0);
 $player-they-color: rgb(192, 32, 0);
 
+.my-foreground {
+  color: $player-me-color !important;
+}
+
+.their-foreground {
+  color: $player-they-color !important;
+}
+
 .my-picked-hexo {
   background-color: $player-me-color !important;
 }
@@ -11,12 +19,46 @@ $player-they-color: rgb(192, 32, 0);
   background-color: $player-they-color !important;
 }
 
-td.square-td {
-  width: math.div(100%, 9);
+div.hexo-table-flexbox {
+  display: flex;
+  flex-flow: row wrap;
+  justify-content: center;
+  gap: 5px 5px;
+}
+
+.hexo-block {
+  width: 100px;
+  height: 100px;
+}
+
+//.hexo-block {
+  //@media (min-width: 1344px) {
+    //width: math.div(100%, 16);
+    //height: math.div(100%, 16);
+  //}
+
+  //@media (min-width: 1024px) and (man-width: 1343px) {
+    //width: math.div(100%, 12);
+    //height: math.div(100%, 12);
+  //}
+
+  //@media (min-width: 864px) and (max-width: 1023px) {
+    //width: math.div(100%, 9);
+    //height: math.div(100%, 9);
+  //}
+
+  //@media (max-width: 863px) {
+    //width: math.div(100%, 6);
+    //height: math.div(100%, 6);
+  //}
+//}
+
+.square-block {
+  display: block;
   position: relative;
 }
 
-td.square-td:after {
+.square-block:after {
   content: '';
   display: block;
   margin-top: 100%;

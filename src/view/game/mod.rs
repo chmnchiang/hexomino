@@ -4,6 +4,7 @@ use log::debug;
 use yew::{html, Component, Context, Html, Properties};
 
 use self::{
+    end_view::EndView,
     pick_view::PickView,
     place_view::PlaceView,
     state::{GameState, GameViewState, SharedGameViewState},
@@ -14,6 +15,7 @@ use crate::game::{
 };
 
 mod board_canvas;
+mod end_view;
 mod hexo_svg;
 mod hexo_table;
 mod pick_view;
@@ -24,17 +26,16 @@ mod turn_indicator;
 #[derive(PartialEq, Properties)]
 pub struct GameProps;
 
-pub struct GameComponent {
+pub struct GameView {
     state: SharedGameViewState,
 }
 
-impl Component for GameComponent {
+impl Component for GameView {
     type Message = Action;
     type Properties = GameProps;
 
     fn create(_ctx: &Context<Self>) -> Self {
         let mut game_state = GameState::new();
-
         Self {
             state: Rc::new(RefCell::new(GameViewState {
                 game_state,
@@ -64,7 +65,9 @@ impl Component for GameComponent {
                     GamePhase::Place => html!{
                         <PlaceView state={self.state.clone()} send_place={send_place}/>
                     },
-                    _ => html!{},
+                    GamePhase::End => html!{
+                        <EndView state={self.state.clone()}/>
+                    }
                 }
             } </div>
         }

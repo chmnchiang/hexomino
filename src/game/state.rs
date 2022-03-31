@@ -175,8 +175,7 @@ impl State {
             }
             Place => {
                 self.current_player = self.current_player.other();
-                dbg!(self.current_player);
-                if !dbg!(self.current_player_can_place()) {
+                if !self.current_player_can_place() {
                     self.phase = GamePhase::End;
                 }
             }

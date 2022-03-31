@@ -6,7 +6,7 @@ mod view;
 
 use log::*;
 
-use view::MainComponent;
+use view::MainView;
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "wee_alloc")]
@@ -21,7 +21,7 @@ pub fn main_js() -> Result<(), JsValue> {
 
     wasm_logger::init(wasm_logger::Config::default());
     info!("start main");
-    yew::start_app::<MainComponent>();
+    yew::start_app::<MainView>();
     info!("registered yew component");
     Ok(())
 }

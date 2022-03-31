@@ -25,34 +25,28 @@ pub fn hexo_table(props: &HexoTableProps) -> Html {
     ) -> Html {
         let chunk = chunk.map(Some).chain(repeat(None)).take(CHUNK_SIZE);
 
-        html! {
-            <tr> {
-                chunk.map(|hexo| html!{
-                    <td class="square-td">
-                        <div class="content" style="margin: 3px"> {
-                            match hexo {
-                                Some((hexo, style)) => html!{
-                                    <HexoSvg hexo={*hexo} style={style.clone()} onclick={onclick.clone()}/>
-                                },
-                                None => html!{},
-                            }
-                        } </div>
-                    </td>
-                }).collect::<Html>()
-            } </tr>
-        }
+        chunk.map(|hexo| html!{
+            <div class="square-block hexo-block"> {
+                    match hexo {
+                        Some((hexo, style)) => html!{
+                            <HexoSvg hexo={*hexo} style={style.clone()} onclick={onclick.clone()}/>
+                        },
+                        None => html!{},
+                    }
+            } </div>
+        }).collect::<Html>()
     }
 
     html! {
-        <div>
-            <table style="width: 90%;"> {
+        <div style="width: 100%;">
+            <div class="hexo-table-flexbox" style="width: 100%;"> {
                 props.styled_hexos
                     .iter()
                     .chunks(CHUNK_SIZE)
                     .into_iter()
                     .map(|chunk| hexo_chunk_html(chunk, props.on_hexo_click.clone()))
                     .collect::<Html>()
-            } </table>
+            } </div>
         </div>
     }
 }

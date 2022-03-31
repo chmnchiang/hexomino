@@ -1,3 +1,4 @@
+use guard::guard;
 use yew::{html, Callback, Component, Context, Html, Properties};
 
 use crate::{
@@ -73,7 +74,7 @@ impl Component for PlaceView {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let state = ctx.props().state.borrow();
         let game_state = &state.game_state;
-        let current_player = game_state.current_player().unwrap();
+        guard!(let Some(current_player) = game_state.current_player() else {return html!{}});
         let select_onclick = ctx.link().callback(PlaceAction::Select);
         let shared_link = SharedLink::<BoardCanvas>::new();
         ctx.link()

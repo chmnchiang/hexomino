@@ -54,6 +54,7 @@ features = [
   "console",
   "DomRect",
   "KeyboardEvent",
+  "FocusEvent",
 ]
 
 [dependencies.gloo-timers]

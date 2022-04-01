@@ -5,7 +5,6 @@ use crate::view::{game::GameView, menu::MenuView};
 mod game;
 mod menu;
 mod util;
-mod window_events;
 
 #[derive(PartialEq, Properties, Default)]
 pub struct MainProps;

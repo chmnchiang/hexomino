@@ -1,28 +1,30 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, iter, rc::Rc};
 
 use anyhow::{Context as _, Result};
-use gloo_render::AnimationFrame;
+use gloo::{
+    events::EventListener,
+    render::{request_animation_frame, AnimationFrame},
+    utils::{document, window},
+};
 use log::{debug, error};
 use piet::{
     kurbo::{Affine, Line, Point, Rect, Vec2},
     Color, RenderContext,
 };
 use piet_web::{Brush, WebRenderContext};
-use wasm_bindgen::JsCast;
-use web_sys::{window, CanvasRenderingContext2d, HtmlCanvasElement, KeyboardEvent, MouseEvent};
+use wasm_bindgen::{JsCast, UnwrapThrowExt};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, KeyboardEvent, MouseEvent};
 use yew::{html, scheduler::Shared, Callback, Component, Context, NodeRef, Properties};
 
 use crate::{
     game::{
+        board::Board,
         constants::{self, COLS, ROWS},
-        hexo::{Hexo, MovedHexo, RHexo, Transform},
+        hexo::{Hexo, MovedHexo, PlacedHexo, RHexo, Transform},
         pos::Pos,
         state::Player,
     },
-    view::{
-        util::SharedLink,
-        window_events::{KeyDownListener, WindowResizeListener},
-    },
+    view::util::SharedLink,
 };
 
 use super::state::SharedGameViewState;
@@ -39,8 +41,8 @@ pub struct BoardCanvas {
     canvas_wrapper: NodeRef,
     renderer: Option<Shared<BoardRenderer>>,
     animation_handle: Option<AnimationFrame>,
-    key_down_listener: Option<KeyDownListener>,
-    window_resize_listener: Option<WindowResizeListener>,
+    key_down_listener: Option<EventListener>,
+    window_resize_listener: Option<EventListener>,
 }
 
 pub enum BoardMsg {
@@ -128,7 +130,7 @@ impl Component for BoardCanvas {
             }
         }
         let renderer = renderer.clone();
-        self.animation_handle = Some(gloo_render::request_animation_frame(move |_| {
+        self.animation_handle = Some(request_animation_frame(move |_| {
             renderer.borrow_mut().render();
         }));
         false
@@ -138,6 +140,7 @@ impl Component for BoardCanvas {
         if !first_render {
             return;
         }
+
         let canvas = self
             .canvas
             .cast::<HtmlCanvasElement>()
@@ -158,13 +161,19 @@ impl Component for BoardCanvas {
             renderer.render();
         }
         self.renderer = Some(renderer);
-        let key_down_callback = ctx
-            .link()
-            .callback(|event: KeyboardEvent| BoardMsg::KeyDown(event.key()));
-        self.key_down_listener = Some(KeyDownListener::register(key_down_callback).unwrap());
-        let window_resize_callback = ctx.link().callback(|_| BoardMsg::WindowResize);
-        self.window_resize_listener =
-            Some(WindowResizeListener::register(window_resize_callback).unwrap());
+
+        let link = ctx.link().clone();
+        self.key_down_listener = Some(EventListener::new(&document(), "keydown", move |event| {
+            let event: &KeyboardEvent = event.dyn_ref().unwrap_throw();
+            link.send_message(BoardMsg::KeyDown(event.key()))
+        }));
+
+        let link = ctx.link().clone();
+        self.window_resize_listener = Some(EventListener::new(&window(), "resize", move |_| {
+            link.send_message(BoardMsg::WindowResize)
+        }));
+
+        ctx.link().send_message(BoardMsg::WindowResize);
     }
 
     fn view(&self, ctx: &Context<Self>) -> yew::Html {
@@ -236,6 +245,7 @@ const BLOCK_BORDER_WIDTH: f64 = 2.0;
 const BOARD_BORDER_WIDTH: f64 = 1.5;
 const P1_BLOCK_COLOR: Color = Color::rgb8(32, 192, 0);
 const P2_BLOCK_COLOR: Color = Color::rgb8(192, 32, 0);
+const INVALID_BLOCK_COLOR: Color = Color::rgb8(240, 240, 64);
 const DEFAULT_BLOCK_COLOR: Color = Color::GRAY;
 
 fn center_of_mass(hexo: &Hexo) -> Vec2 {
@@ -287,9 +297,8 @@ impl BoardRenderer {
         ctx: CanvasRenderingContext2d,
         game_view_state: SharedGameViewState,
     ) -> Result<Self> {
-        let window = web_sys::window().context("can't get window object")?;
         Ok(Self {
-            ctx: WebRenderContext::new(ctx, window),
+            ctx: WebRenderContext::new(ctx, window()),
             game_view_state,
             state: RendererState {
                 mouse_pos: None,
@@ -309,24 +318,79 @@ impl BoardRenderer {
         let transform = self.base_transform();
         self.with_affine(transform, |this| {
             this.render_board_tiles();
-            let placed_hexos = this
-                .game_view_state
-                .borrow()
-                .game_state
-                .board()
-                .placed_hexos()
-                .to_vec();
-            for hexo in placed_hexos {
-                this.render_tiles(
-                    hexo.moved_hexo().tiles(),
-                    player_to_color(Some(hexo.player())),
-                )
-            }
+            this.render_hexos_on_board();
             if let Some(mouse_pos) = this.state.mouse_pos {
                 this.render_mouse(transform.inverse() * mouse_pos);
             }
         });
         self.ctx.finish().expect("render failed");
+    }
+
+    pub fn render_board_tiles(&mut self) {
+        // Render COLS x ROWS
+        let border_brush = self.ctx.solid_brush(Color::grey8(30));
+        let fill_brush = self.ctx.solid_brush(Color::WHITE);
+        self.ctx.fill(
+            Rect::new(
+                0.0,
+                0.0,
+                BLOCK_LENGTH * COLS as f64,
+                BLOCK_LENGTH * ROWS as f64,
+            ),
+            &fill_brush,
+        );
+        for i in 0..=COLS {
+            self.ctx.stroke(
+                Line::new(
+                    Point::new(BLOCK_LENGTH * (i as f64), 0.0),
+                    Point::new(BLOCK_LENGTH * (i as f64), BLOCK_LENGTH * (ROWS as f64)),
+                ),
+                &border_brush,
+                BOARD_BORDER_WIDTH,
+            )
+        }
+        for i in 0..=ROWS {
+            self.ctx.stroke(
+                Line::new(
+                    Point::new(0.0, BLOCK_LENGTH * (i as f64)),
+                    Point::new(BLOCK_LENGTH * (COLS as f64), BLOCK_LENGTH * (i as f64)),
+                ),
+                &border_brush,
+                BOARD_BORDER_WIDTH,
+            )
+        }
+    }
+
+    pub fn render_hexos_on_board(&mut self) {
+        let placed_hexos = self
+            .game_view_state
+            .borrow()
+            .game_state
+            .board()
+            .placed_hexos()
+            .to_vec();
+        for hexo in &placed_hexos {
+            self.render_placed_hexos(hexo);
+        }
+    }
+
+    fn render_mouse(&mut self, mouse_point: Point) {
+        guard::guard!(let Some(rhexo) = self.state.rhexo else { return });
+        guard::guard!(let Some(current_player) = self.game_view_state.borrow().game_state.current_player() else { return });
+        let mouse_pos = MousePos::from_point(mouse_point);
+        let real_point = mouse_pos.to_render_point();
+        match mouse_pos {
+            MousePos::Locked(pos) => {
+                self.render_placed_hexos_with_conflict(
+                    rhexo.move_to(pos).placed_by(current_player),
+                );
+            }
+            MousePos::Free(_) => {
+                self.with_translate((real_point.x, real_point.y), |this| {
+                    this.render_placed_hexos(&rhexo.move_to(Pos::ZERO).placed_by(current_player));
+                });
+            }
+        }
     }
 
     fn base_transform(&self) -> Affine {
@@ -344,9 +408,37 @@ impl BoardRenderer {
         translate * scale
     }
 
-    pub fn render_tiles(&mut self, tiles: impl Iterator<Item = Pos>, color: Color) {
+    pub fn render_placed_hexos(&mut self, placed_hexos: &PlacedHexo) {
+        for tile in placed_hexos.moved_hexo().tiles() {
+            let x = tile.x as f64 * BLOCK_LENGTH;
+            let y = tile.y as f64 * BLOCK_LENGTH;
+            let fill = self
+                .ctx
+                .solid_brush(player_to_color(Some(placed_hexos.player())));
+            self.render_block(Point::new(x, y), &fill);
+        }
+    }
+
+    pub fn render_placed_hexos_with_conflict(&mut self, placed_hexos: PlacedHexo) {
+        let game_view_state = self.game_view_state.clone();
+        let game_view_state = game_view_state.borrow();
+        let board = game_view_state.game_state.board();
+        for tile in placed_hexos.moved_hexo().tiles() {
+            let x = tile.x as f64 * BLOCK_LENGTH;
+            let y = tile.y as f64 * BLOCK_LENGTH;
+            let color = if !Board::in_bound(tile) || board.is_placed(tile) {
+                INVALID_BLOCK_COLOR
+            } else {
+                player_to_color(Some(placed_hexos.player()))
+            };
+            let fill = self.ctx.solid_brush(color);
+            self.render_block(Point::new(x, y), &fill);
+        }
+    }
+
+    pub fn render_locked_rhexo(&mut self, rhexo: &RHexo, color: Color) {
         let fill = self.ctx.solid_brush(color);
-        for tile in tiles {
+        for tile in rhexo.tiles() {
             let x = tile.x as f64 * BLOCK_LENGTH;
             let y = tile.y as f64 * BLOCK_LENGTH;
             self.render_block(Point::new(x, y), &fill);
@@ -385,51 +477,6 @@ impl BoardRenderer {
 
     pub fn with_translate<PT: Into<Vec2>>(&mut self, translate: PT, func: impl FnOnce(&mut Self)) {
         self.with_affine(Affine::translate(translate), func)
-    }
-
-    pub fn render_board_tiles(&mut self) {
-        // Render COLS x ROWS
-        let border_brush = self.ctx.solid_brush(Color::grey8(30));
-        let fill_brush = self.ctx.solid_brush(Color::WHITE);
-        self.ctx.fill(
-            Rect::new(
-                0.0,
-                0.0,
-                BLOCK_LENGTH * COLS as f64,
-                BLOCK_LENGTH * ROWS as f64,
-            ),
-            &fill_brush,
-        );
-        for i in 0..=COLS {
-            self.ctx.stroke(
-                Line::new(
-                    Point::new(BLOCK_LENGTH * (i as f64), 0.0),
-                    Point::new(BLOCK_LENGTH * (i as f64), BLOCK_LENGTH * (ROWS as f64)),
-                ),
-                &border_brush,
-                BOARD_BORDER_WIDTH,
-            )
-        }
-        for i in 0..=ROWS {
-            self.ctx.stroke(
-                Line::new(
-                    Point::new(0.0, BLOCK_LENGTH * (i as f64)),
-                    Point::new(BLOCK_LENGTH * (COLS as f64), BLOCK_LENGTH * (i as f64)),
-                ),
-                &border_brush,
-                BOARD_BORDER_WIDTH,
-            )
-        }
-    }
-
-    fn render_mouse(&mut self, mouse_point: Point) {
-        guard::guard!(let Some(rhexo) = self.state.rhexo else { return });
-        let mouse_pos = MousePos::from_point(mouse_point);
-        let real_point = mouse_pos.to_render_point();
-        let current_player = self.game_view_state.borrow().game_state.current_player();
-        self.with_translate((real_point.x, real_point.y), |this| {
-            this.render_tiles(rhexo.tiles(), player_to_color(current_player));
-        })
     }
 
     fn get_moved_hexo_on_click(&self) -> Option<MovedHexo> {

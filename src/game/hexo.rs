@@ -150,6 +150,10 @@ impl MovedHexo {
     pub fn tiles(&self) -> impl Iterator<Item = Pos> + '_ {
         self.rhexo.tiles().map(move |tile| tile + self.displacement)
     }
+
+    pub fn placed_by(self, player: Player) -> PlacedHexo {
+        PlacedHexo::new(self, player)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Getters, CopyGetters)]

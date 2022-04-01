@@ -20,7 +20,7 @@ impl Board {
         }
     }
 
-    fn in_bound(point: Pos) -> bool {
+    pub fn in_bound(point: Pos) -> bool {
         0 <= point.x && point.x < COLS as i32 && 0 <= point.y && point.y < ROWS as i32
     }
 

@@ -30,6 +30,12 @@ pub struct GameView {
     state: SharedGameViewState,
 }
 
+fn fast_forward_to_place(state: &mut GameState) {
+    for hexo in Hexo::all_hexos() {
+        state.play(Action::Pick { hexo }).unwrap();
+    }
+}
+
 impl Component for GameView {
     type Message = Action;
     type Properties = GameProps;

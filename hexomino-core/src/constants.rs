@@ -1,3 +1,10 @@
+use crate::Tiles;
+use crate::Pos;
+
+pub struct __Hexo {
+    pub tiles: Tiles,
+}
+
 #[cfg(not(test))]
 pub const ROWS: usize = 12;
 #[cfg(not(test))]

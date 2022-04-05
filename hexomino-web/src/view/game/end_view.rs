@@ -1,6 +1,6 @@
 use yew::{function_component, html, Properties};
 
-use crate::game::state::Player;
+use hexomino_core::Player;
 
 use super::state::SharedGameViewState;
 

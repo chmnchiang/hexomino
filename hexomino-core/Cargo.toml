@@ -1,0 +1,13 @@
+[package]
+name = "hexomino-core"
+description = "Implements the core of the game Hexomino"
+version = "0.1.0"
+authors = ["Cheng-Min Chiang <chmnchiang@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+assert2 = "0.3.6"
+getset = "0.1.2"
+itertools = "0.10"
+piet = "0.5"

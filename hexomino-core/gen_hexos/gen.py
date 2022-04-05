@@ -75,12 +75,6 @@ def hexo_to_repr(poly: Poly) -> str:
 if __name__ == '__main__':
     codegen_template = textwrap.dedent(
         '''\
-        use crate::game::hexo::Tiles;
-        use crate::game::pos::Pos;
-        pub struct __Hexo {{
-            pub tiles: Tiles,
-        }}
-
         #[cfg(not(test))]
         pub const N_HEXOS: usize = {n_hexos};
         #[cfg(not(test))]

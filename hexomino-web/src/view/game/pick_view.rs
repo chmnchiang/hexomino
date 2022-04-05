@@ -1,11 +1,6 @@
-use super::{
-    state::SharedGameViewState,
-    turn_indicator::TurnIndicator,
-};
-use crate::{
-    game::{hexo::Hexo, state::Player},
-    view::game::hexo_table::HexoTable,
-};
+use super::{state::SharedGameViewState, turn_indicator::TurnIndicator};
+use crate::view::game::hexo_table::HexoTable;
+use hexomino_core::{Hexo, Player};
 use yew::{html, Callback, Component, Context, Html, Properties};
 
 #[derive(Properties, PartialEq)]

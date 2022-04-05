@@ -1,8 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::game::state::Player;
+use hexomino_core::Player;
 
-pub type GameState = crate::game::state::State;
+pub type GameState = hexomino_core::State;
 
 pub struct GameViewState {
     pub game_state: GameState,

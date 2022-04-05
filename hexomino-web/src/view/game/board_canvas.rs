@@ -1,6 +1,6 @@
-use std::{cell::RefCell, iter, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use gloo::{
     events::EventListener,
     render::{request_animation_frame, AnimationFrame},
@@ -16,15 +16,10 @@ use wasm_bindgen::{JsCast, UnwrapThrowExt};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, KeyboardEvent, MouseEvent};
 use yew::{html, scheduler::Shared, Callback, Component, Context, NodeRef, Properties};
 
-use crate::{
-    game::{
-        board::Board,
-        constants::{self, COLS, ROWS},
-        hexo::{Hexo, MovedHexo, PlacedHexo, RHexo, Transform},
-        pos::Pos,
-        state::Player,
-    },
-    view::util::SharedLink,
+use crate::view::util::SharedLink;
+use hexomino_core::{
+    constants::{COLS, ROWS},
+    Board, Hexo, MovedHexo, PlacedHexo, Player, Pos, RHexo, Transform,
 };
 
 use super::state::SharedGameViewState;

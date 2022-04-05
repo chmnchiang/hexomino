@@ -1,10 +1,7 @@
 #![allow(dead_code)]
 
-mod game;
-mod render;
 mod view;
 
-use anyhow::Context;
 use log::*;
 
 use view::MainView;

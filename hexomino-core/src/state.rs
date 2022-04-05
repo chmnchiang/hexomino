@@ -191,7 +191,7 @@ pub enum Action {
 
 #[cfg(test)]
 mod tests {
-    use crate::game::{hexo::Transform, pos::Pos};
+    use crate::{Transform, Pos};
 
     use super::*;
     use assert2::{assert, check, let_assert};

@@ -47,7 +47,7 @@ impl Component for MainView {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let on_choose = ctx.link().callback(|mode| MainMsg::StartGame(mode));
+        let on_choose = ctx.link().callback(MainMsg::StartGame);
         let inner = match self.current_page {
             Page::Menu => html! { <MenuView {on_choose}/> },
             Page::Game => html! { <GameView/> },

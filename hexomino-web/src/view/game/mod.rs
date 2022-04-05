@@ -1,5 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
+use hexomino_core::{Action, GamePhase, Hexo, Player};
 use log::debug;
 use yew::{html, Component, Context, Html, Properties};
 
@@ -8,10 +9,6 @@ use self::{
     pick_view::PickView,
     place_view::PlaceView,
     state::{GameState, GameViewState, SharedGameViewState},
-};
-use crate::game::{
-    hexo::Hexo,
-    state::{Action, GamePhase, Player},
 };
 
 mod board_canvas;
@@ -41,6 +38,7 @@ impl Component for GameView {
     type Properties = GameProps;
 
     fn create(_ctx: &Context<Self>) -> Self {
+        #[allow(unused_mut)]
         let mut game_state = GameState::new();
         Self {
             state: Rc::new(RefCell::new(GameViewState {

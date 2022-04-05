@@ -13,7 +13,7 @@ impl Component for MenuView {
     type Message = ();
     type Properties = MenuProps;
 
-    fn create(ctx: &Context<Self>) -> Self {
+    fn create(_ctx: &Context<Self>) -> Self {
         Self
     }
 

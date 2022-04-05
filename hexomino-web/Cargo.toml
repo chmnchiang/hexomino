@@ -1,0 +1,64 @@
+# You must change these to your own details.
+[package]
+name = "hexomino-web"
+description = "Web interface for the hexomino game"
+version = "0.1.0"
+authors = ["Cheng-Min Chiang <chmnchiang@gmail.com>"]
+readme = "README.md"
+edition = "2021"
+
+[profile.release]
+# This makes the compiled code faster and smaller, but it makes compiling slower,
+# so it's only enabled in release mode.
+lto = true
+
+[features]
+default = ["wee_alloc"]
+
+[dependencies]
+hexomino-core = { path = "../hexomino-core"  }
+
+wasm-bindgen = "0.2.79"
+wasm-bindgen-futures = "0.4.29"
+
+gloo = "0.6"
+
+wee_alloc = { version = "0.4.2", optional = true }
+
+wasm-logger = "0.2"
+log = "0.4"
+
+yew = "0.19"
+
+piet = "0.5"
+piet-web = "0.5"
+
+itertools = "0.10"
+anyhow = "1.0"
+guard = "0.5"
+
+assert2 = "0.3.6"
+
+# The `web-sys` crate allows you to interact with the various browser APIs,
+# like the DOM.
+[dependencies.web-sys]
+version = "0.3.55"
+features = [
+  "Window",
+  "Document",
+  "Element",
+  "HtmlCanvasElement",
+  "CanvasRenderingContext2d",
+  "console",
+  "DomRect",
+  "KeyboardEvent",
+  "FocusEvent",
+]
+
+[target."cfg(debug_assertions)".dependencies]
+console_error_panic_hook = "0.1"
+
+# These crates are used for running unit tests.
+[dev-dependencies]
+wasm-bindgen-test = "0.3.29"
+js-sys = "0.3.22"

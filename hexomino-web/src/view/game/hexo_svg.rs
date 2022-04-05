@@ -1,7 +1,7 @@
 use piet::kurbo::Vec2;
-use yew::{function_component, html, Html, Properties, classes, Callback};
+use yew::{classes, function_component, html, Callback, Html, Properties};
 
-use crate::game::{hexo::Hexo, pos::Pos};
+use hexomino_core::{Hexo, Pos};
 
 #[derive(Properties, PartialEq)]
 pub struct HexoSvgProps {

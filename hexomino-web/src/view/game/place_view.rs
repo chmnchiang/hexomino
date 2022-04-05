@@ -1,18 +1,13 @@
 use guard::guard;
+use hexomino_core::{Hexo, MovedHexo, Player};
 use yew::{html, Callback, Component, Context, Html, Properties};
 
-use crate::{
+use crate::view::{
     game::{
-        hexo::{Hexo, MovedHexo},
-        state::Player,
+        board_canvas::{BoardCanvas, BoardMsg},
+        hexo_table::{HexoTable, StyledHexo},
     },
-    view::{
-        game::{
-            board_canvas::{BoardCanvas, BoardMsg},
-            hexo_table::{HexoTable, StyledHexo},
-        },
-        util::{SharedLink, WeakLink},
-    },
+    util::{SharedLink, WeakLink},
 };
 
 use super::{state::SharedGameViewState, turn_indicator::TurnIndicator};

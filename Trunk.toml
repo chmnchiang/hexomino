@@ -1,5 +1,5 @@
 [build]
-target = "src/html/index.html"
+target = "hexomino-web/html/index.html"
 dist = "dist"
 public_url = "/hexomino/"
 

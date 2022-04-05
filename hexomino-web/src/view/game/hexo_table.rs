@@ -1,10 +1,10 @@
 use std::iter::repeat;
 
+use hexomino_core::Hexo;
 use itertools::Itertools;
 use yew::{function_component, html, Callback, Html, Properties};
 
 use super::hexo_svg::HexoSvg;
-use crate::game::hexo::Hexo;
 
 pub type StyledHexo = (Hexo, Option<String>);
 

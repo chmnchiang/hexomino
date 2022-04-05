@@ -1,6 +1,6 @@
 use yew::{function_component, html, Properties};
 
-use crate::game::state::Player;
+use hexomino_core::Player;
 
 #[derive(Properties, PartialEq)]
 pub struct TurnIndicatorProps {

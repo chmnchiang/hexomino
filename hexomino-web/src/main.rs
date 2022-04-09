@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 mod view;
+mod game;
+mod util;
 
 use log::*;
 

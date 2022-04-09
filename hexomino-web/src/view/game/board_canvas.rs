@@ -6,6 +6,10 @@ use gloo::{
     render::{request_animation_frame, AnimationFrame},
     utils::{document, window},
 };
+use hexomino_core::{
+    constants::{COLS, ROWS},
+    Board, Hexo, MovedHexo, PlacedHexo, Player, Pos, RHexo, Transform,
+};
 use log::{debug, error};
 use piet::{
     kurbo::{Affine, Line, Point, Rect, Vec2},
@@ -16,17 +20,11 @@ use wasm_bindgen::{JsCast, UnwrapThrowExt};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, KeyboardEvent, MouseEvent};
 use yew::{html, scheduler::Shared, Callback, Component, Context, NodeRef, Properties};
 
-use crate::view::util::SharedLink;
-use hexomino_core::{
-    constants::{COLS, ROWS},
-    Board, Hexo, MovedHexo, PlacedHexo, Player, Pos, RHexo, Transform,
-};
-
-use super::state::SharedGameViewState;
+use crate::{game::SharedGameState, view::shared_link::SharedLink};
 
 #[derive(Properties, PartialEq)]
 pub struct BoardProps {
-    pub state: SharedGameViewState,
+    pub state: SharedGameState,
     pub shared_link: SharedLink<BoardCanvas>,
     pub place_hexo_callback: Callback<MovedHexo>,
 }
@@ -146,7 +144,7 @@ impl Component for BoardCanvas {
             .unwrap()
             .dyn_into()
             .unwrap();
-        let renderer = BoardRenderer::create(context2d, Rc::clone(&ctx.props().state))
+        let renderer = BoardRenderer::create(context2d, ctx.props().state.clone())
             .expect("can't create renderer");
         let renderer = Rc::new(RefCell::new(renderer));
         let (width, height) = resize_canvas_and_return_size(&canvas).unwrap();
@@ -197,7 +195,7 @@ fn resize_canvas_and_return_size(canvas: &HtmlCanvasElement) -> Result<(u32, u32
 
 pub struct BoardRenderer {
     ctx: WebRenderContext<'static>,
-    game_view_state: SharedGameViewState,
+    game_view_state: SharedGameState,
     state: RendererState,
 }
 
@@ -288,10 +286,7 @@ impl MousePos {
 }
 
 impl BoardRenderer {
-    pub fn create(
-        ctx: CanvasRenderingContext2d,
-        game_view_state: SharedGameViewState,
-    ) -> Result<Self> {
+    pub fn create(ctx: CanvasRenderingContext2d, game_view_state: SharedGameState) -> Result<Self> {
         Ok(Self {
             ctx: WebRenderContext::new(ctx, window()),
             game_view_state,
@@ -360,7 +355,7 @@ impl BoardRenderer {
         let placed_hexos = self
             .game_view_state
             .borrow()
-            .game_state
+            .core_game_state
             .board()
             .placed_hexos()
             .to_vec();
@@ -371,7 +366,8 @@ impl BoardRenderer {
 
     fn render_mouse(&mut self, mouse_point: Point) {
         guard::guard!(let Some(rhexo) = self.state.rhexo else { return });
-        guard::guard!(let Some(current_player) = self.game_view_state.borrow().game_state.current_player() else { return });
+        guard::guard!(let Some(current_player) = self.game_view_state.borrow()
+            .core_game_state.current_player() else { return });
         let mouse_pos = MousePos::from_point(mouse_point);
         let real_point = mouse_pos.to_render_point();
         match mouse_pos {
@@ -417,7 +413,7 @@ impl BoardRenderer {
     pub fn render_placed_hexos_with_conflict(&mut self, placed_hexos: PlacedHexo) {
         let game_view_state = self.game_view_state.clone();
         let game_view_state = game_view_state.borrow();
-        let board = game_view_state.game_state.board();
+        let board = game_view_state.core_game_state.board();
         for tile in placed_hexos.moved_hexo().tiles() {
             let x = tile.x as f64 * BLOCK_LENGTH;
             let y = tile.y as f64 * BLOCK_LENGTH;
@@ -483,7 +479,7 @@ impl BoardRenderer {
         if self
             .game_view_state
             .borrow()
-            .game_state
+            .core_game_state
             .board()
             .can_place(&moved_hexo)
         {

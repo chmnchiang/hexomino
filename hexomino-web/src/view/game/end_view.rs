@@ -1,17 +1,16 @@
+use hexomino_core::Player;
 use yew::{function_component, html, Properties};
 
-use hexomino_core::Player;
-
-use super::state::SharedGameViewState;
+use crate::game::SharedGameState;
 
 #[derive(PartialEq, Properties)]
 pub struct EndViewProps {
-    pub state: SharedGameViewState,
+    pub state: SharedGameState,
 }
 
 #[function_component(EndView)]
 pub fn end_view(props: &EndViewProps) -> Html {
-    let win_banner = match props.state.borrow().game_state.winner().unwrap() {
+    let win_banner = match props.state.borrow().core_game_state.winner().unwrap() {
         Player::First => html! { <h1 class="title my-foreground">{ "Player 1 Wins" }</h1> },
         Player::Second => html! { <h1 class="title their-foreground">{ "Player 2 Wins" }</h1> },
     };

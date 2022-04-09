@@ -1,11 +1,11 @@
-use super::{state::SharedGameViewState, turn_indicator::TurnIndicator};
-use crate::view::game::hexo_table::HexoTable;
+use super::turn_indicator::TurnIndicator;
+use crate::{game::SharedGameState, view::game::hexo_table::HexoTable};
 use hexomino_core::{Hexo, Player};
 use yew::{html, Callback, Component, Context, Html, Properties};
 
 #[derive(Properties, PartialEq)]
 pub struct PickViewProps {
-    pub state: SharedGameViewState,
+    pub state: SharedGameState,
     pub send_pick: Callback<Hexo>,
 }
 
@@ -21,13 +21,13 @@ impl Component for PickView {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let state = ctx.props().state.borrow();
-        let game_state = &state.game_state;
+        let core_state = &state.core_game_state;
 
         let hexo_style_func = |hexo| {
             ctx.props()
                 .state
                 .borrow()
-                .game_state
+                .core_game_state
                 .inventory()
                 .owner_of(hexo)
                 .map(|player| match player {
@@ -40,7 +40,7 @@ impl Component for PickView {
             .collect::<Vec<_>>();
         html! {
             <>
-                <TurnIndicator current_player={game_state.current_player()}/>
+                <TurnIndicator current_player={core_state.current_player()}/>
                 <HexoTable {styled_hexos} on_hexo_click={ctx.props().send_pick.clone()}/>
             </>
         }

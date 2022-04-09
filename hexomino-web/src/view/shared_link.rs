@@ -1,11 +1,9 @@
 use std::{
-    cell::{RefCell, UnsafeCell},
+    cell::UnsafeCell,
     rc::{Rc, Weak},
 };
 
 use yew::{html::Scope, Component};
-
-pub type Shared<T> = Rc<RefCell<T>>;
 
 #[derive(Clone)]
 pub struct SharedLink<COMP: Component>(Rc<UnsafeCell<Option<Scope<COMP>>>>);

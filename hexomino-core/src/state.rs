@@ -25,8 +25,9 @@ impl Player {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Getters)]
 pub struct Inventory {
+    #[getset(get = "pub")]
     remaining_hexos: HexoSet,
     player_hexos: [HexoSet; 2],
 }
@@ -116,6 +117,7 @@ impl State {
 }
 
 impl State {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             phase: GamePhase::Pick,

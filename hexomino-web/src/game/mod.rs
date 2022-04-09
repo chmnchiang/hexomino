@@ -21,6 +21,8 @@ pub type CoreGameState = hexomino_core::State;
 pub struct GameState {
     pub core_game_state: CoreGameState,
     pub me: Player,
+    pub player_1_name: String,
+    pub player_2_name: String,
 }
 
 impl PartialEq for GameState {
@@ -30,10 +32,19 @@ impl PartialEq for GameState {
 }
 
 impl GameState {
-    fn new() -> Self {
+    fn new(player_1_name: String, player_2_name: String) -> Self {
         Self {
             core_game_state: CoreGameState::new(),
             me: Player::First,
+            player_1_name,
+            player_2_name,
+        }
+    }
+
+    pub fn name_of(&self, player: Player) -> &str {
+        match player {
+            Player::First => &self.player_1_name,
+            Player::Second => &self.player_2_name,
         }
     }
 }
@@ -46,16 +57,27 @@ pub trait Game {
 }
 
 pub fn new_game(mode: GameMode, callback: Callback<()>) -> GameBundle {
-    let game_state = Rc::new(RefCell::new(GameState::new()));
     match mode {
-        GameMode::AI => GameBundle {
-            game: Rc::new(AIGame::new(game_state.clone(), callback)),
-            game_state,
-        },
-        GameMode::TwoPlayer => GameBundle {
-            game: Rc::new(TwoPlayerGame::new(game_state.clone(), callback)),
-            game_state,
-        },
+        GameMode::AI => {
+            let game_state = Rc::new(RefCell::new(GameState::new(
+                "Player".to_string(),
+                "AI".to_string(),
+            )));
+            GameBundle {
+                game: Rc::new(AIGame::new(game_state.clone(), callback)),
+                game_state,
+            }
+        }
+        GameMode::TwoPlayer => {
+            let game_state = Rc::new(RefCell::new(GameState::new(
+                "Player 1".to_string(),
+                "Player 2".to_string(),
+            )));
+            GameBundle {
+                game: Rc::new(TwoPlayerGame::new(game_state.clone(), callback)),
+                game_state,
+            }
+        }
     }
 }
 

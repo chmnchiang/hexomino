@@ -40,7 +40,9 @@ impl Component for PickView {
             .collect::<Vec<_>>();
         html! {
             <>
-                <TurnIndicator current_player={core_state.current_player()}/>
+                <TurnIndicator current_player={core_state.current_player()}
+                    player_1_name={state.name_of(Player::First).to_string()}
+                    player_2_name={state.name_of(Player::Second).to_string()}/>
                 <HexoTable {styled_hexos} on_hexo_click={ctx.props().send_pick.clone()}/>
             </>
         }

@@ -5,10 +5,10 @@ use hexomino_core::Player;
 #[derive(Properties, PartialEq)]
 pub struct TurnIndicatorProps {
     pub current_player: Option<Player>,
-    #[prop_or("123".to_string())]
-    first_player_name: String,
-    #[prop_or("123".to_string())]
-    second_player_name: String,
+    #[prop_or("Player 1".to_string())]
+    pub player_1_name: String,
+    #[prop_or("Player 2".to_string())]
+    pub player_2_name: String,
 }
 
 #[function_component(TurnIndicator)]
@@ -56,9 +56,9 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
             <path d={shape_player_1} style={player1_style}/>
             <path d={shape_player_2} style={player2_style}/>
             <text x={FONT_PADDING.to_string()} y={(HEIGHT/2).to_string()}
-                font-size="80" alignment-baseline="central">{"Player1"}</text>
+                font-size="80" alignment-baseline="central">{props.player_1_name.clone()}</text>
             <text x={(WIDTH - FONT_PADDING).to_string()} y={(HEIGHT/2).to_string()} font-size="80"
-                text-anchor="end" alignment-baseline="central">{"Player1"}</text>
+                text-anchor="end" alignment-baseline="central">{props.player_2_name.clone()}</text>
             </svg>
         </div>
     }

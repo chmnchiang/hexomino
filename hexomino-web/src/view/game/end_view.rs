@@ -1,5 +1,5 @@
 use hexomino_core::Player;
-use yew::{function_component, html, Properties};
+use yew::{classes, function_component, html, Properties};
 
 use crate::game::SharedGameState;
 
@@ -10,14 +10,16 @@ pub struct EndViewProps {
 
 #[function_component(EndView)]
 pub fn end_view(props: &EndViewProps) -> Html {
-    let win_banner = match props.state.borrow().core_game_state.winner().unwrap() {
-        Player::First => html! { <h1 class="title my-foreground">{ "Player 1 Wins" }</h1> },
-        Player::Second => html! { <h1 class="title their-foreground">{ "Player 2 Wins" }</h1> },
+    let state = props.state.borrow();
+    let winner = state.core_game_state.winner().unwrap();
+    let style = match winner {
+        Player::First => "my-foreground",
+        Player::Second => "their-foreground",
     };
     html! {
         <div class="columns is-mobile is-centered">
             <div class="column is-narrow">
-            { win_banner }
+                <h1 class={classes!("title", style)}>{ format!("{} Wins", state.name_of(winner)) }</h1>
             </div>
         </div>
     }

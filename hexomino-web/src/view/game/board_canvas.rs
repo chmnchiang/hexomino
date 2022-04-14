@@ -233,8 +233,10 @@ impl RendererState {
 
 const CANVAS_MARGIN: f64 = 20.0;
 const BLOCK_LENGTH: f64 = 30.0;
-const BLOCK_BORDER_COLOR: Color = Color::BLACK;
-const BLOCK_BORDER_WIDTH: f64 = 2.0;
+const BLOCK_INNER_BORDER_WIDTH: f64 = 2.0;
+const BLOCK_INNER_BORDER_COLOR: Color = Color::grey8(0x60);
+const BLOCK_OUTER_BORDER_WIDTH: f64 = 3.0;
+const BLOCK_OUTER_BORDER_COLOR: Color = Color::BLACK;
 const BOARD_BORDER_WIDTH: f64 = 1.5;
 const P1_BLOCK_COLOR: Color = Color::rgb8(32, 192, 0);
 const P2_BLOCK_COLOR: Color = Color::rgb8(192, 32, 0);
@@ -400,7 +402,8 @@ impl BoardRenderer {
     }
 
     pub fn render_placed_hexos(&mut self, placed_hexos: &PlacedHexo) {
-        for tile in placed_hexos.moved_hexo().tiles() {
+        let moved_hexo = placed_hexos.moved_hexo();
+        for tile in moved_hexo.tiles() {
             let x = tile.x as f64 * BLOCK_LENGTH;
             let y = tile.y as f64 * BLOCK_LENGTH;
             let fill = self
@@ -408,13 +411,15 @@ impl BoardRenderer {
                 .solid_brush(player_to_color(Some(placed_hexos.player())));
             self.render_block(Point::new(x, y), &fill);
         }
+        self.render_borders(moved_hexo.borders());
     }
 
     pub fn render_placed_hexos_with_conflict(&mut self, placed_hexos: PlacedHexo) {
         let game_view_state = self.game_view_state.clone();
         let game_view_state = game_view_state.borrow();
         let board = game_view_state.core_game_state.board();
-        for tile in placed_hexos.moved_hexo().tiles() {
+        let moved_hexo = placed_hexos.moved_hexo();
+        for tile in moved_hexo.tiles() {
             let x = tile.x as f64 * BLOCK_LENGTH;
             let y = tile.y as f64 * BLOCK_LENGTH;
             let color = if !Board::in_bound(tile) || board.is_placed(tile) {
@@ -425,6 +430,7 @@ impl BoardRenderer {
             let fill = self.ctx.solid_brush(color);
             self.render_block(Point::new(x, y), &fill);
         }
+        self.render_borders(moved_hexo.borders());
     }
 
     pub fn render_locked_rhexo(&mut self, rhexo: &RHexo, color: Color) {
@@ -434,10 +440,11 @@ impl BoardRenderer {
             let y = tile.y as f64 * BLOCK_LENGTH;
             self.render_block(Point::new(x, y), &fill);
         }
+        self.render_borders(rhexo.borders());
     }
 
     pub fn render_block(&mut self, point: Point, fill: &Brush) {
-        let border_brush = self.ctx.solid_brush(BLOCK_BORDER_COLOR);
+        let border_brush = self.ctx.solid_brush(BLOCK_INNER_BORDER_COLOR);
         self.ctx.fill(
             Rect::new(
                 point.x,
@@ -455,8 +462,23 @@ impl BoardRenderer {
                 point.y + BLOCK_LENGTH,
             ),
             &border_brush,
-            BLOCK_BORDER_WIDTH,
+            BLOCK_INNER_BORDER_WIDTH,
         );
+    }
+
+    pub fn render_borders(&mut self, borders: impl Iterator<Item = (Pos, Pos)>) {
+        let border_brush = self.ctx.solid_brush(BLOCK_OUTER_BORDER_COLOR);
+        for (p1, p2) in borders {
+            let x1 = p1.x as f64 * BLOCK_LENGTH;
+            let y1 = p1.y as f64 * BLOCK_LENGTH;
+            let x2 = p2.x as f64 * BLOCK_LENGTH;
+            let y2 = p2.y as f64 * BLOCK_LENGTH;
+            self.ctx.stroke(
+                Line::new((x1, y1), (x2, y2)),
+                &border_brush,
+                BLOCK_OUTER_BORDER_WIDTH,
+            );
+        }
     }
 
     pub fn with_affine(&mut self, affine: Affine, func: impl FnOnce(&mut Self)) {

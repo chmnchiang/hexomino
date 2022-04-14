@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import total_ordering
+from collections import Counter
 import typing
 import textwrap
 
@@ -67,10 +68,33 @@ def generate(n: int) -> typing.List[Poly]:
 
     return list(results)
 
+def hexo_borders(poly: Poly) -> typing.List[typing.Tuple[Point, Point]]:
+    dfs = tuple(Point(x, y) for x, y in ((0, 0), (0, 1), (1, 1), (1, 0)))
+    counter = Counter()
+    for tile in poly:
+        for i in range(4):
+            d1 = dfs[i]
+            d2 = dfs[(i+1) % 4]
+            if d1 < d2:
+                d1, d2 = d2, d1
+            border = (tile + d1, tile + d2)
+            counter[border] += 1
+
+    outer_borders = [border for border, cnt in counter.items() if cnt == 1]
+    return outer_borders
+
 def hexo_to_repr(poly: Poly) -> str:
     assert len(poly) == 6
     tiles_str = ', '.join(f'Pos {{ x: {p.x}, y: {p.y} }}' for p in poly)
-    return f'__Hexo {{ tiles: [{tiles_str}] }}'
+    borders = hexo_borders(poly)
+    borders_str = ', '.join(
+        f'(Pos {{ x: {p1.x}, y: {p1.y} }}, Pos {{ x: {p2.x}, y: {p2.y} }})'
+           for (p1, p2) in borders)
+    return (
+    f'''__Hexo {{
+            tiles: [{tiles_str}],
+            borders: &[{borders_str}],
+        }}''')
 
 if __name__ == '__main__':
     codegen_template = textwrap.dedent(

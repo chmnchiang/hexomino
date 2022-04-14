@@ -38,6 +38,10 @@ impl Hexo {
     pub fn all_hexos() -> impl Iterator<Item = Self> {
         (0..N_HEXOS).map(Hexo::new)
     }
+
+    pub fn borders(self) -> impl Iterator<Item = (Pos, Pos)> {
+        HEXOS[self.id()].borders.iter().copied()
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -60,7 +64,7 @@ impl Transform {
     }
 
     pub fn flip(self) -> Self {
-        let Self {flipped, rotate} = self;
+        let Self { flipped, rotate } = self;
         Self {
             flipped: !flipped,
             rotate,
@@ -68,7 +72,7 @@ impl Transform {
     }
 
     pub fn rotate(self) -> Self {
-        let Self {flipped, rotate} = self;
+        let Self { flipped, rotate } = self;
         Self {
             flipped,
             rotate: (rotate + 1) % 4,
@@ -118,6 +122,17 @@ impl RHexo {
             .tiles()
             .map(move |tile| self.transform.apply_on(tile))
     }
+
+    pub fn borders(&self) -> impl Iterator<Item = (Pos, Pos)> + '_ {
+        let offset = self.transform().apply_on(Pos::new(-1, -1)) + Pos::new(1, 1);
+        let offset = Pos::new(offset.x / 2, offset.y / 2);
+        self.hexo().borders().map(move |(p1, p2)| {
+            (
+                self.transform().apply_on(p1) + offset,
+                self.transform().apply_on(p2) + offset,
+            )
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, Getters, CopyGetters)]
@@ -153,6 +168,12 @@ impl MovedHexo {
 
     pub fn placed_by(self, player: Player) -> PlacedHexo {
         PlacedHexo::new(self, player)
+    }
+
+    pub fn borders(&self) -> impl Iterator<Item = (Pos, Pos)> + '_ {
+        self.rhexo
+            .borders()
+            .map(move |(p1, p2)| (p1 + self.displacement, p2 + self.displacement))
     }
 }
 

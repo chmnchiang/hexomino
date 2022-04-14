@@ -3,6 +3,7 @@ use crate::Pos;
 
 pub struct __Hexo {
     pub tiles: Tiles,
+    pub borders: &'static [(Pos, Pos)],
 }
 
 #[cfg(not(test))]
@@ -29,6 +30,7 @@ pub const HEXOS: [__Hexo; 2] = [
             Pos { x: 1, y: 0 },
             Pos { x: 1, y: 1 },
         ],
+        borders: &[],
     },
     __Hexo {
         tiles: [
@@ -39,5 +41,6 @@ pub const HEXOS: [__Hexo; 2] = [
             Pos { x: 0, y: 4 },
             Pos { x: 0, y: 5 },
         ],
+        borders: &[],
     },
 ];

@@ -30,9 +30,12 @@ const BLOCK_INNER_BORDER_WIDTH: f64 = 2.0;
 const BLOCK_INNER_BORDER_COLOR: Color = Color::grey8(0x60);
 const BLOCK_OUTER_BORDER_WIDTH: f64 = 3.0;
 const BLOCK_OUTER_BORDER_COLOR: Color = Color::BLACK;
+const BLOCK_OUTER_BORDER_LAST_COLOR: Color = Color::rgb8(32, 32, 255);
 const BOARD_BORDER_WIDTH: f64 = 1.5;
 const P1_BLOCK_COLOR: Color = Color::rgb8(32, 192, 0);
 const P2_BLOCK_COLOR: Color = Color::rgb8(192, 32, 0);
+const P1_BLOCK_LAST_COLOR: Color = Color::rgb8(48, 240, 32);
+const P2_BLOCK_LAST_COLOR: Color = Color::rgb8(240, 48, 32);
 const INVALID_BLOCK_COLOR: Color = Color::rgb8(240, 240, 64);
 const DEFAULT_BLOCK_COLOR: Color = Color::GRAY;
 
@@ -48,6 +51,14 @@ fn player_to_color(player: Option<Player>) -> Color {
     match player {
         Some(Player::First) => P1_BLOCK_COLOR,
         Some(Player::Second) => P2_BLOCK_COLOR,
+        None => DEFAULT_BLOCK_COLOR,
+    }
+}
+
+fn player_to_color_last(player: Option<Player>) -> Color {
+    match player {
+        Some(Player::First) => P1_BLOCK_LAST_COLOR,
+        Some(Player::Second) => P2_BLOCK_LAST_COLOR,
         None => DEFAULT_BLOCK_COLOR,
     }
 }
@@ -153,8 +164,9 @@ impl<'a> BoardRenderer<'a> {
             .board()
             .placed_hexos()
             .to_vec();
-        for hexo in &placed_hexos {
-            self.render_placed_hexos(hexo);
+        for (i, hexo) in placed_hexos.iter().enumerate() {
+            let is_last = i == placed_hexos.len() - 1;
+            self.render_placed_hexos(hexo, is_last);
         }
     }
 
@@ -169,7 +181,10 @@ impl<'a> BoardRenderer<'a> {
             }
             MousePos::Free(_) => {
                 self.with_translate((real_point.x, real_point.y), |this| {
-                    this.render_placed_hexos(&rhexo.move_to(Pos::ZERO).placed_by(Player::First));
+                    this.render_placed_hexos(
+                        &rhexo.move_to(Pos::ZERO).placed_by(Player::First),
+                        false,
+                    );
                 });
             }
         }
@@ -188,17 +203,28 @@ impl<'a> BoardRenderer<'a> {
         translate * scale
     }
 
-    fn render_placed_hexos(&mut self, placed_hexos: &PlacedHexo) {
+    fn render_placed_hexos(&mut self, placed_hexos: &PlacedHexo, is_last: bool) {
         let moved_hexo = placed_hexos.moved_hexo();
         for tile in moved_hexo.tiles() {
             let x = tile.x as f64 * BLOCK_LENGTH;
             let y = tile.y as f64 * BLOCK_LENGTH;
+            let player = placed_hexos.player();
+            let fill_color = if is_last {
+                player_to_color_last(Some(player))
+            } else {
+                player_to_color(Some(player))
+            };
             let fill = self
                 .ctx
-                .solid_brush(player_to_color(Some(placed_hexos.player())));
+                .solid_brush(fill_color);
             self.render_block(Point::new(x, y), &fill);
         }
-        self.render_borders(moved_hexo.borders());
+        let brush = if is_last {
+            self.ctx.solid_brush(BLOCK_OUTER_BORDER_LAST_COLOR)
+        } else {
+            self.ctx.solid_brush(BLOCK_OUTER_BORDER_COLOR)
+        };
+        self.render_borders(moved_hexo.borders(), &brush);
     }
 
     fn render_placed_hexos_with_conflict(&mut self, placed_hexos: PlacedHexo) {
@@ -217,7 +243,8 @@ impl<'a> BoardRenderer<'a> {
             let fill = self.ctx.solid_brush(color);
             self.render_block(Point::new(x, y), &fill);
         }
-        self.render_borders(moved_hexo.borders());
+        let brush = &self.ctx.solid_brush(BLOCK_OUTER_BORDER_COLOR);
+        self.render_borders(moved_hexo.borders(), brush);
     }
 
     fn render_locked_rhexo(&mut self, rhexo: &RHexo, color: Color) {
@@ -227,7 +254,8 @@ impl<'a> BoardRenderer<'a> {
             let y = tile.y as f64 * BLOCK_LENGTH;
             self.render_block(Point::new(x, y), &fill);
         }
-        self.render_borders(rhexo.borders());
+        let brush = &self.ctx.solid_brush(BLOCK_OUTER_BORDER_COLOR);
+        self.render_borders(rhexo.borders(), brush);
     }
 
     fn render_block(&mut self, point: Point, fill: &Brush) {
@@ -253,8 +281,7 @@ impl<'a> BoardRenderer<'a> {
         );
     }
 
-    fn render_borders(&mut self, borders: impl Iterator<Item = (Pos, Pos)>) {
-        let border_brush = self.ctx.solid_brush(BLOCK_OUTER_BORDER_COLOR);
+    fn render_borders(&mut self, borders: impl Iterator<Item = (Pos, Pos)>, border_brush: &Brush) {
         for (p1, p2) in borders {
             let x1 = p1.x as f64 * BLOCK_LENGTH;
             let y1 = p1.y as f64 * BLOCK_LENGTH;
@@ -262,7 +289,7 @@ impl<'a> BoardRenderer<'a> {
             let y2 = p2.y as f64 * BLOCK_LENGTH;
             self.ctx.stroke(
                 Line::new((x1, y1), (x2, y2)),
-                &border_brush,
+                border_brush,
                 BLOCK_OUTER_BORDER_WIDTH,
             );
         }

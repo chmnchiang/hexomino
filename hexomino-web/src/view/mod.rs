@@ -8,6 +8,7 @@ use crate::{
 mod game;
 mod menu;
 mod shared_link;
+mod util;
 
 #[derive(PartialEq, Properties, Default)]
 pub struct MainProps;

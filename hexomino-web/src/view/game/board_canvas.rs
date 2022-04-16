@@ -1,6 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
 
-use anyhow::Result;
 use gloo::{
     events::EventListener,
     render::{request_animation_frame, AnimationFrame},
@@ -19,6 +18,7 @@ use crate::{
     view::{
         game::board_renderer::{BoardRenderer, RenderConfig},
         shared_link::SharedLink,
+        util::resize_canvas_and_return_size,
     },
 };
 
@@ -31,7 +31,6 @@ pub struct BoardProps {
 
 pub struct BoardCanvas {
     canvas: NodeRef,
-    canvas_wrapper: NodeRef,
     web_render_context: Option<Shared<WebRenderContext<'static>>>,
     render_state: RenderState,
     animation_handle: Option<AnimationFrame>,
@@ -43,8 +42,8 @@ pub struct BoardCanvas {
 pub struct RenderState {
     mouse_point: Option<Point>,
     rhexo: Option<RHexo>,
-    width: u32,
-    height: u32,
+    width: f64,
+    height: f64,
 }
 
 pub enum BoardMsg {
@@ -54,6 +53,7 @@ pub enum BoardMsg {
     KeyDown(String),
     WindowResize,
     MouseLeave,
+    ShouldRender,
 }
 
 impl BoardCanvas {
@@ -90,13 +90,12 @@ impl Component for BoardCanvas {
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
             canvas: Default::default(),
-            canvas_wrapper: Default::default(),
             web_render_context: None,
             render_state: RenderState {
                 mouse_point: None,
                 rhexo: None,
-                width: 0,
-                height: 0,
+                width: 0.0,
+                height: 0.0,
             },
             animation_handle: None,
             key_down_listener: None,
@@ -148,12 +147,13 @@ impl Component for BoardCanvas {
                 WindowResize => {
                     if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
                         (self.render_state.width, self.render_state.height) =
-                            resize_canvas_and_return_size(&canvas).unwrap();
+                            resize_canvas_and_return_size(&canvas);
                     }
                 }
                 MouseLeave => {
                     self.render_state.mouse_point = None;
                 }
+                ShouldRender => (),
             }
         }
 
@@ -182,6 +182,7 @@ impl Component for BoardCanvas {
 
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if !first_render {
+            ctx.link().send_message(BoardMsg::ShouldRender);
             return;
         }
 
@@ -197,8 +198,6 @@ impl Component for BoardCanvas {
             .unwrap();
         let web_render_context = WebRenderContext::new(context2d, window());
         self.web_render_context = Some(Rc::new(RefCell::new(web_render_context)));
-        (self.render_state.width, self.render_state.height) =
-            resize_canvas_and_return_size(&canvas).unwrap();
 
         let link = ctx.link().clone();
         self.key_down_listener = Some(EventListener::new(&document(), "keydown", move |event| {
@@ -222,18 +221,10 @@ impl Component for BoardCanvas {
         let onmouseleave = ctx.link().callback(|_| BoardMsg::MouseLeave);
         ctx.props().shared_link.install(ctx.link().clone());
         html! {
-            <div ref={self.canvas_wrapper.clone()}>
+            <div>
                 <canvas ref={self.canvas.clone()} style="width: 100%; height: 60vh" {onmousemove} {onclick} {onmouseleave}/>
                 <p> {"<Shift> = Rotate, <CapsLock> = Flip"} </p>
             </div>
         }
     }
-}
-
-fn resize_canvas_and_return_size(canvas: &HtmlCanvasElement) -> Result<(u32, u32)> {
-    let width = canvas.client_width() as u32;
-    let height = canvas.client_height() as u32;
-    canvas.set_width(width);
-    canvas.set_height(height);
-    Ok((width, height))
 }

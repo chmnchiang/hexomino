@@ -111,7 +111,7 @@ impl State {
     }
 
     pub fn board(&self) -> &Board {
-        assert_eq!(self.phase, GamePhase::Place);
+        assert_ne!(self.phase, GamePhase::Pick);
         &self.board
     }
 }
@@ -125,6 +125,32 @@ impl State {
             inventory: Inventory::new(),
             board: Board::new(),
         }
+    }
+
+    pub fn new_random_place() -> Self {
+        let mut state = State::new();
+        for hexo in Hexo::all_hexos() {
+            state.play(Action::Pick { hexo }).unwrap();
+        }
+        state.current_player = Player::First;
+
+        state
+    }
+
+    pub fn new_random_end() -> Self {
+        let mut state = State::new_random_place();
+        while state.phase() != GamePhase::End {
+            let current_player = state.current_player().unwrap();
+            let hexos = state.inventory().hexos_of(current_player);
+            for hexo in hexos.clone().iter() {
+                if let Some(moved_hexo) = state.board.try_find_placement(hexo) {
+                    state.play(Action::Place { hexo: moved_hexo }).unwrap();
+                    break;
+                }
+            }
+        }
+
+        state
     }
 
     pub fn play(&mut self, action: Action) -> Result<()> {
@@ -193,7 +219,7 @@ pub enum Action {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Transform, Pos};
+    use crate::{Pos, Transform};
 
     use super::*;
     use assert2::{assert, check, let_assert};

@@ -6,6 +6,7 @@ use self::{end_view::EndView, pick_view::PickView, place_view::PlaceView};
 use crate::game::{new_game, CoreGameState, GameBundle, GameMode};
 
 mod board_canvas;
+mod board_renderer;
 mod end_view;
 mod hexo_svg;
 mod hexo_table;

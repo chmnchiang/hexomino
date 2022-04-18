@@ -75,16 +75,16 @@ impl Transform {
         let Self { flipped, rotate } = self;
         Self {
             flipped,
-            rotate: (rotate + 1) % 4,
+            rotate: (rotate + if flipped { 3 } else { 1 }) % 4,
         }
     }
 
     fn apply_on(self, mut tile: Pos) -> Pos {
-        if self.flipped {
-            tile = tile.flip();
-        }
         for _ in 0..self.rotate {
             tile = tile.rotate();
+        }
+        if self.flipped {
+            tile = tile.flip();
         }
         tile
     }

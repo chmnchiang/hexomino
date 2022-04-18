@@ -1,0 +1,10 @@
+[package]
+name = "hexomino-api"
+description = "API definition for the hexomino game"
+version = "0.1.0"
+authors = ["Cheng-Min Chiang <chmnchiang@gmail.com>"]
+readme = "README.md"
+edition = "2021"
+
+[dependencies]
+serde = "1.0.136"

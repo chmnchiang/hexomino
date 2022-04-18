@@ -1,0 +1,26 @@
+# You must change these to your own details.
+[package]
+name = "hexomino-server"
+description = "Backend server for the hexomino game"
+version = "0.1.0"
+authors = ["Cheng-Min Chiang <chmnchiang@gmail.com>"]
+readme = "README.md"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.5", features = ["headers"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.2", features = ["auth", "trace"] }
+jsonwebtoken = "8.1"
+hyper = { version = "0.14", features = ["full"] }
+serde = { version = "1.0" }
+chrono = "0.4.19"
+tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
+tracing = "0.1.34"
+hexomino-api = { path = "../hexomino-api"  }
+
+[dev-dependencies]
+reqwest = { version = "0.11.10", features = ["json"] }
+anyhow = "1.0.56"

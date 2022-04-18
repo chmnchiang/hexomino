@@ -282,14 +282,14 @@ mod tests {
         assert!(let Ok(_) = state.play(Action::Place {
             hexo: Hexo::new(0)
                 .apply(Transform::new(true, 0))
-                .move_to(Pos::new(0, 3))
+                .move_to(Pos::new(1, 0))
         }));
-        check!(state.board.is_placed(Pos::new(0, 0)));
-        check!(state.board.is_placed(Pos::new(0, 1)));
-        check!(state.board.is_placed(Pos::new(0, 2)));
-        check!(state.board.is_placed(Pos::new(0, 3)));
+        check!(state.board.is_placed(Pos::new(1, 0)));
+        check!(state.board.is_placed(Pos::new(1, 1)));
         check!(state.board.is_placed(Pos::new(1, 2)));
         check!(state.board.is_placed(Pos::new(1, 3)));
+        check!(state.board.is_placed(Pos::new(0, 0)));
+        check!(state.board.is_placed(Pos::new(0, 1)));
     }
 
     #[test]
@@ -320,12 +320,12 @@ mod tests {
         assert!(let Ok(_) = state.play(Action::Place {
             hexo: Hexo::new(0)
                 .apply(Transform::new(true, 2))
-                .move_to(Pos::new(1, 0))
+                .move_to(Pos::new(0, 3))
         }));
         check!(state.board.is_placed(Pos::new(0, 0)));
         check!(state.board.is_placed(Pos::new(0, 1)));
-        check!(state.board.is_placed(Pos::new(1, 0)));
-        check!(state.board.is_placed(Pos::new(1, 1)));
+        check!(state.board.is_placed(Pos::new(0, 2)));
+        check!(state.board.is_placed(Pos::new(0, 3)));
         check!(state.board.is_placed(Pos::new(1, 2)));
         check!(state.board.is_placed(Pos::new(1, 3)));
     }

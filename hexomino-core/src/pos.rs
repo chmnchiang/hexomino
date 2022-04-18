@@ -15,8 +15,8 @@ impl Pos {
 
     pub fn flip(self) -> Self {
         Self {
-            x: self.x,
-            y: -self.y,
+            x: -self.x,
+            y: self.y,
         }
     }
 

@@ -3,4 +3,10 @@
 members = [
   "hexomino-core",
   "hexomino-web",
+  "hexomino-server",
+  "hexomino-api",
 ]
+
+[profile.release]
+lto = true
+

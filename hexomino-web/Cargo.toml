@@ -7,11 +7,6 @@ authors = ["Cheng-Min Chiang <chmnchiang@gmail.com>"]
 readme = "README.md"
 edition = "2021"
 
-[profile.release]
-# This makes the compiled code faster and smaller, but it makes compiling slower,
-# so it's only enabled in release mode.
-lto = true
-
 [features]
 default = ["wee_alloc"]
 
@@ -20,6 +15,7 @@ anyhow = "1.0"
 assert2 = "0.3.6"
 guard = "0.5"
 hexomino-core = { path = "../hexomino-core"  }
+hexomino-api = { path = "../hexomino-api"  }
 itertools = "0.10"
 log = "0.4"
 piet = "0.5"
@@ -30,13 +26,14 @@ wasm-bindgen-futures = "0.4.29"
 wasm-logger = "0.2"
 wee_alloc = { version = "0.4.2", optional = true }
 yew = "0.19"
+futures = "0.3.21"
 
 [dependencies.getrandom]
 version = "0.2"
 features = ["js"]
 
 [dependencies.gloo]
-version = "0.6"
+version = "0.7"
 features = ["futures"]
 
 [dependencies.web-sys]

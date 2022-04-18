@@ -8,3 +8,6 @@ watch = ['.']
 
 [serve]
 addr = '127.0.0.1'
+
+[[proxy]]
+backend = "http://localhost:3000/api/"

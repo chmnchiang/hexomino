@@ -1,6 +1,8 @@
 use std::ops::Add;
 
-#[derive(Clone, Copy, Eq, PartialEq, Default, PartialOrd, Ord, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Eq, PartialEq, Default, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct Pos {
     pub x: i32,
     pub y: i32,

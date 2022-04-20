@@ -4,10 +4,14 @@ dist = "dist"
 public_url = "/hexomino/"
 
 [watch]
-watch = ['.']
+watch = ['./hexomino-web', './hexomino-api', './hexomino-core']
 
 [serve]
 addr = '127.0.0.1'
 
 [[proxy]]
 backend = "http://localhost:3000/api/"
+
+[[proxy]]
+backend = "ws://localhost:3000/ws"
+ws = true

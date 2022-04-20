@@ -7,4 +7,9 @@ readme = "README.md"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.56"
+hexomino-core = { version = "0.1.0", path = "../hexomino-core" }
 serde = "1.0.136"
+
+[features]
+internal-debug = []

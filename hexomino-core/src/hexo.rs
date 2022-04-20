@@ -5,8 +5,9 @@ use super::{
 };
 use getset::{CopyGetters, Getters};
 use itertools::Itertools;
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hexo(usize);
 
 pub type Tiles = [Pos; 6];
@@ -44,7 +45,7 @@ impl Hexo {
     }
 }
 
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Transform {
     flipped: bool,
     rotate: i32,
@@ -90,7 +91,7 @@ impl Transform {
     }
 }
 
-#[derive(Clone, Copy, Debug, CopyGetters)]
+#[derive(Clone, Copy, Debug, CopyGetters, Serialize, Deserialize)]
 pub struct RHexo {
     #[getset(get_copy = "pub")]
     hexo: Hexo,
@@ -135,7 +136,7 @@ impl RHexo {
     }
 }
 
-#[derive(Debug, Clone, Copy, Getters, CopyGetters)]
+#[derive(Debug, Clone, Copy, Getters, CopyGetters, Serialize, Deserialize)]
 pub struct MovedHexo {
     #[getset(get = "pub")]
     rhexo: RHexo,

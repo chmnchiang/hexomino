@@ -2,7 +2,7 @@ use std::net::TcpListener;
 
 use anyhow::Result;
 use hexomino_api::{AuthPayload, AuthResponse};
-use hexomino_server::all_routes;
+use hexomino_server::make_app;
 
 fn spawn_server() -> Result<String> {
     let listener = TcpListener::bind("127.0.0.1:0")?;

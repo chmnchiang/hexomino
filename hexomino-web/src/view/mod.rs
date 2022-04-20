@@ -1,4 +1,8 @@
+use futures::{SinkExt, StreamExt};
+use gloo::{net::websocket::{futures::WebSocket, Message}, utils::document};
 use hexomino_api::AuthResponse;
+use log::debug;
+use wasm_bindgen_futures::spawn_local;
 use yew::{html, Component, Context, Html, Properties};
 
 use crate::{
@@ -54,6 +58,8 @@ impl Component for MainView {
             }
             LoginOk(auth) => {
                 self.auth = Some(auth);
+                let auth = self.auth.clone().unwrap();
+                spawn_local(start_ws(auth));
             }
         }
         true
@@ -83,4 +89,23 @@ impl Component for MainView {
             </main>
         }
     }
+}
+
+async fn start_ws(auth: AuthResponse) {
+    let document = document();
+    let host = document.location().unwrap().host().unwrap();
+    let mut ws = WebSocket::open(&format!("ws://{host}/ws")).unwrap();
+    ws.send(Message::Text(auth.token.clone())).await.unwrap();
+    debug!("send");
+    let msg = ws.next().await.unwrap().unwrap();
+    if let Message::Bytes(msg) = msg {
+        let msg: hexomino_api::Error = bincode::deserialize(&msg[..]).unwrap();
+        debug!("Server: {:?}", msg);
+    }
+    let msg = ws.next().await.unwrap().unwrap();
+    if let Message::Bytes(msg) = msg {
+        let msg: hexomino_api::HelloFromKernel = bincode::deserialize(&msg[..]).unwrap();
+        debug!("Server: {:?}", msg);
+    }
+    std::mem::forget(ws);
 }

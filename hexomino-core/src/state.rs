@@ -1,12 +1,12 @@
-use anyhow::{bail, ensure, Result};
-use getset::{CopyGetters, Getters};
-
 use super::{
     board::Board,
     hexo::{Hexo, HexoSet, MovedHexo, PlacedHexo},
 };
+use anyhow::{bail, ensure, Result};
+use getset::{CopyGetters, Getters};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Player {
     First = 0,
     Second = 1,
@@ -211,7 +211,7 @@ impl State {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Action {
     Pick { hexo: Hexo },
     Place { hexo: MovedHexo },

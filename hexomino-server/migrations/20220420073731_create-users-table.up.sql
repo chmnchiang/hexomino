@@ -1,0 +1,8 @@
+CREATE TABLE Users (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  password TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX users_name_index
+ON Users(name);

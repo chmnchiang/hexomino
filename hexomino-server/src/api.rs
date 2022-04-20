@@ -3,8 +3,8 @@ use axum::{
     extract::{FromRequest, RequestParts},
     headers::{authorization::Bearer, Authorization},
     response::IntoResponse,
-    routing::{get, post},
-    Json, Router, TypedHeader,
+    routing::post,
+    Extension, Json, Router, TypedHeader,
 };
 use chrono::{Duration, Utc};
 use hexomino_api::{AuthPayload, AuthResponse};
@@ -12,20 +12,36 @@ use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 
+use crate::DbPool;
+
 pub fn routes() -> Router {
-    Router::new()
-        .route("/login", post(login_handler))
-        .route("/protect", get(protect_handler))
+    Router::new().route("/login", post(login_handler))
 }
 
-async fn login_handler(Json(payload): Json<AuthPayload>) -> Result<Json<AuthResponse>, AuthError> {
-    if payload.username != "hao123" || payload.password != "hao123" {
+async fn login_handler(
+    Json(payload): Json<AuthPayload>,
+    Extension(db): Extension<DbPool>,
+) -> Result<Json<AuthResponse>, AuthError> {
+    let user = sqlx::query!(
+        r#"
+        SELECT id, name, password FROM Users
+        WHERE name = ?
+        "#,
+        payload.username
+    )
+    .fetch_one(&db)
+    .await
+    .map_err(|_| AuthError)?;
+
+    // TODO: Make this secure. We work on password hash instead. Yet, this is not really important
+    // in our case where we generate all the password.
+    if user.password != payload.password {
         return Err(AuthError);
     }
 
     let claims = Claims {
         exp: (Utc::now() + Duration::days(1)).timestamp(),
-        name: payload.username,
+        id: user.id,
     };
 
     let token = jsonwebtoken::encode(
@@ -36,21 +52,17 @@ async fn login_handler(Json(payload): Json<AuthPayload>) -> Result<Json<AuthResp
     .map_err(|_| AuthError)?;
 
     Ok(Json(AuthResponse {
-        username: claims.name,
+        username: user.name,
         token,
     }))
 }
 
-async fn protect_handler(claims: Claims) -> String {
-    format!("You are {}", claims.name)
-}
-
-struct AuthError;
+pub struct AuthError;
 
 #[derive(Serialize, Deserialize)]
-struct Claims {
+pub struct Claims {
     exp: i64,
-    name: String,
+    pub id: i64,
 }
 
 impl IntoResponse for AuthError {
@@ -69,14 +81,14 @@ impl<B: Send> FromRequest<B> for Claims {
                 .await
                 .map_err(|_| AuthError)?;
 
-        authorize_jwt(bearer).await
+        authorize_jwt(bearer.token()).await
     }
 }
 
-async fn authorize_jwt(bearer: Bearer) -> Result<Claims, AuthError> {
+pub async fn authorize_jwt(bearer: &str) -> Result<Claims, AuthError> {
     trace!("authorizing jwt");
     let data = jsonwebtoken::decode::<Claims>(
-        bearer.token(),
+        bearer,
         &jsonwebtoken::DecodingKey::from_secret(b"hao123"),
         &jsonwebtoken::Validation::default(),
     )

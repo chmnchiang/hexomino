@@ -1,5 +1,4 @@
 #!/bin/sh
-trap 'echo kill $p1 $p2; kill $p1 $p2' SIGINT
+trap 'echo kill -2 $p1; kill -2 $p1' SIGINT
 trunk serve & p1=$!
-cargo watch -x "run --bin hexomino-server" & p2=$!
-wait $p1 $p2
+cargo watch -x "run --bin hexomino-server --features internal-debug"

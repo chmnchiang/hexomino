@@ -1,33 +1,36 @@
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use anyhow::anyhow;
+use api::{cerr, RoomId, RoomMsg, UserId};
 use axum::extract::ws::{Message, WebSocket};
-use futures::{
-    stream::{SplitSink, SplitStream},
-    FutureExt, SinkExt, StreamExt as _,
+use tokio::time::timeout;
+use tracing::{debug, error, info, trace};
+
+use crate::{
+    http::{authorize_jwt, Claims},
+    DbPool,
 };
-use hexomino_api::{cerr, Error as ApiError, HelloFromKernel};
-use parking_lot::RwLock;
-use stream_cancel::{StreamExt as _, TakeUntilIf, Trigger, Tripwire};
-use tokio::{spawn, sync::Mutex, time::timeout};
-use tracing::{debug, error, trace};
 
-use crate::{api::authorize_jwt, DbPool};
+use self::{
+    room::RoomManager,
+    user::{User, UserPool},
+};
 
-type Shared<T> = Arc<RwLock<T>>;
+mod room;
+mod user;
 
+#[derive(Debug)]
 enum KernelMsg {
-    ConnectionLost,
-    Message(Message),
+    ConnectionLost(User),
+    UserMessage(User, api::Request),
 }
 
 pub struct Kernel {
-    db: DbPool,
-    //users: UserPool,
-    rooms: RoomManager,
+    user_pool: UserPool,
+    room_manager: RoomManager,
 }
 
-async fn ws_send_api_error(mut ws: WebSocket, err: ApiError) {
+async fn ws_send_api_error(mut ws: WebSocket, err: api::Error) {
     if let Ok(buf) = bincode::serialize(&err) {
         let _ = ws.send(Message::Binary(buf)).await;
     } else {
@@ -36,180 +39,107 @@ async fn ws_send_api_error(mut ws: WebSocket, err: ApiError) {
 }
 
 impl Kernel {
+    pub fn new(db: DbPool) -> Arc<Self> {
+        Arc::new_cyclic(|me| Self {
+            room_manager: RoomManager::new(),
+            user_pool: UserPool::new(me.clone(), db),
+        })
+    }
+
     pub async fn new_connection(self: Arc<Kernel>, mut ws: WebSocket) {
         debug!("new connection");
-        let recv_future = timeout(Duration::from_secs(10), ws.recv());
-        let run = || async {
-            let result = recv_future
-                .await
-                .map_err(|_| cerr!("Start connection timeout"))?;
-            let result = result.ok_or_else(|| cerr!("Start connection failed, no message"))?;
-            let result = result.map_err(|e| anyhow!(e))?;
-            if let Message::Text(token) = result {
-                match authorize_jwt(&token).await {
-                    Err(_) => Err(cerr!("Authenticate error")),
-                    Ok(claims) => Ok(claims),
-                }
-            } else {
-                Err(cerr!("Start connection failed, wrong message type"))
-            }
-        };
-
-        let result = run().await;
+        let result = authorize_ws(&mut ws).await;
         match result {
-            Ok(claims) => self.check_in_user(UserId(claims.id), ws).await,
+            Ok(claims) => self.user_pool.user_ws_connect(UserId(claims.id), ws).await,
             Err(err) => ws_send_api_error(ws, err).await,
         }
     }
+}
 
-    async fn check_in_user(self: Arc<Kernel>, id: UserId, ws: WebSocket) {
-        let data = match UserData::fetch(&self.db, id).await {
-            None => return ws_send_api_error(ws, cerr!("User does not exists")).await,
-            Some(data) => data,
-        };
-        let (connection, receiver) = Connection::new(ws);
-        let user = Arc::new(RwLock::new(User {
-            id,
-            data,
-            connection: Some(connection),
-        }));
-        spawn(self.connection_recv_loop(user.clone(), receiver));
-        let name = user.read().data.name.clone();
-        let fut = user.read().send(Message::Binary(
-            bincode::serialize(&HelloFromKernel { username: name }).unwrap(),
-        ));
-        fut.await;
-        trace!("user checked in");
+const WS_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
+
+async fn authorize_ws(ws: &mut WebSocket) -> api::Result<Claims> {
+    let recv_future = timeout(WS_AUTH_TIMEOUT, ws.recv());
+    let result = recv_future
+        .await
+        .map_err(|_| cerr!("Start connection timeout"))?;
+    let result = result.ok_or_else(|| cerr!("Start connection failed, no message"))?;
+    let result = result.map_err(|e| anyhow!(e))?;
+    if let Message::Text(token) = result {
+        match authorize_jwt(&token).await {
+            Err(_) => Err(cerr!("Authenticate error")),
+            Ok(claims) => Ok(claims),
+        }
+    } else {
+        Err(cerr!("Start connection failed, wrong message type"))
+    }
+}
+
+impl Kernel {
+    async fn update(&self, message: KernelMsg) {
+        use KernelMsg::*;
+        trace!("update message = {:?}", message);
+        match message {
+            ConnectionLost(user) => user.drop_connection(),
+            UserMessage(user, msg) => {
+                self.handle_user_message(user, msg).await;
+            }
+        }
     }
 
-    async fn connection_recv_loop(
-        self: Arc<Self>,
-        user: Shared<User>,
-        mut receiver: CancellableStream<WebSocket>,
-    ) {
-        while let Some(msg) = receiver.next().await {
-            match msg {
-                Ok(msg) => {
-                    self.handle_message(Arc::clone(&user), KernelMsg::Message(msg));
-                }
-                Err(_) => {
-                    user.write().drop_connection();
-                }
+    async fn handle_user_ws_message(&self, user: User, message: Message) {
+        let msg = match message {
+            Message::Binary(msg) => msg,
+            Message::Close(_) => {
+                self.update(KernelMsg::ConnectionLost(user)).await;
+                return;
+            }
+            Message::Ping(_) | Message::Pong(_) => return,
+            _ => {
+                info!("user send incorrect ws type");
+                return;
+            }
+        };
+        if let Ok(msg) = bincode::deserialize::<api::Request>(&msg) {
+            self.update(KernelMsg::UserMessage(user, msg));
+        } else {
+            info!("deserialize user data failed");
+        }
+    }
+
+    async fn handle_user_message(&self, user: User, msg: api::Request) {
+        use api::Request::*;
+        match msg {
+            GetRooms => {
+                self.get_rooms(user).await;
+            }
+            JoinRoom(room_id) => {
+                self.join_room(user, room_id).await;
+            }
+            CreateRoom => {
+                self.create_room(user).await;
+            }
+            _ => {
+                todo!();
             }
         }
     }
 }
 
 impl Kernel {
-    pub fn new(db: DbPool) -> Arc<Self> {
-        Arc::new(Self {
-            db,
-            rooms: RoomManager {},
-        })
+    async fn get_rooms(&self, user: User) {
+        let rooms = self.room_manager.get_rooms();
+        let resp = api::Response::RoomMsg(RoomMsg::SyncRooms(rooms));
+        user.send(resp).await;
     }
-
-    fn handle_message(&self, user: Shared<User>, message: KernelMsg) {
-        use KernelMsg::*;
-        match message {
-            ConnectionLost => user.write().drop_connection(),
-            Message(msg) => {
-                println!("recv = {:?}", msg);
-            }
-        }
+    async fn join_room(&self, user: User, room_id: RoomId) {
+        let room = self.room_manager.join_room(user.clone(), room_id);
+        let resp = room.map(|room| api::Response::RoomMsg(RoomMsg::JoinRoom(room)));
+        user.send_result(resp).await;
     }
-}
-
-type CancellableStream<T> = TakeUntilIf<SplitStream<T>, Tripwire>;
-
-struct Connection {
-    sender: Arc<Mutex<SplitSink<WebSocket, Message>>>,
-    recv_trigger: Trigger,
-}
-
-impl Connection {
-    fn new(ws: WebSocket) -> (Self, CancellableStream<WebSocket>) {
-        let (sender, receiver) = ws.split();
-        let (trigger, tripwire) = Tripwire::new();
-        let receiver = receiver.take_until_if(tripwire);
-        (
-            Connection {
-                sender: Arc::new(Mutex::new(sender)),
-                recv_trigger: trigger,
-            },
-            receiver,
-        )
+    async fn create_room(&self, user: User) {
+        let room = self.room_manager.create_room(user.clone());
+        let resp = room.map(|room| api::Response::RoomMsg(RoomMsg::JoinRoom(room)));
+        user.send_result(resp).await;
     }
 }
-
-#[derive(Clone, Copy)]
-struct UserId(i64);
-
-struct User {
-    id: UserId,
-    data: UserData,
-    connection: Option<Connection>,
-}
-
-impl User {
-    fn drop_connection(&mut self) {
-        self.connection = None;
-    }
-
-    fn send(&self, msg: Message) -> impl Future + Send {
-        if let Some(connection) = &self.connection {
-            let sender = connection.sender.clone();
-            async move {
-                let mut sender = sender.lock().await;
-                if let Err(err) = sender.send(msg).await {
-                    let err = anyhow!("Failed to send websocket to user: {:?}", err);
-                    debug!("{:?}", err);
-                    Err(err)
-                } else {
-                    Ok(())
-                }
-            }
-            .left_future()
-        } else {
-            async { Err(anyhow!("Connection is not established")) }.right_future()
-        }
-    }
-
-    fn spawn_send(&self, msg: Message) {
-        spawn(self.send(msg).map(|_| ()));
-    }
-}
-
-struct UserData {
-    name: String,
-}
-
-impl UserData {
-    async fn fetch(db: &DbPool, UserId(id): UserId) -> Option<Self> {
-        let user = sqlx::query!(
-            r#"
-            SELECT name FROM Users
-            WHERE id = $1
-            "#,
-            id
-        )
-        .fetch_one(db)
-        .await
-        .ok()?;
-
-        Some(Self { name: user.name })
-    }
-}
-
-struct UserPool {}
-
-impl UserPool {
-    fn new() -> Self {
-        todo!();
-    }
-
-    fn socket_connect(id: String, socket: WebSocket) {
-        todo!();
-    }
-}
-
-struct RoomManager {}

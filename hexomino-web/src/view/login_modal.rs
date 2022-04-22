@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use gloo::net::http::Request;
 use hexomino_api::{AuthPayload, AuthResponse};
 use wasm_bindgen_futures::spawn_local;

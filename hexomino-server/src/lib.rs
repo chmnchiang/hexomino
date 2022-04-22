@@ -3,7 +3,7 @@ use kernel::Kernel;
 use sqlx::SqlitePool;
 use tower_http::trace::TraceLayer;
 
-mod api;
+mod http;
 mod kernel;
 mod ws;
 
@@ -16,7 +16,7 @@ pub async fn make_app() -> IntoMakeService<Router> {
         .expect("fail to create DB pool");
 
     Router::new()
-        .nest("/api", api::routes())
+        .nest("/api", http::routes())
         .nest("/ws", ws::routes())
         .layer(Extension(pool.clone()))
         .layer(Extension(Kernel::new(pool)))

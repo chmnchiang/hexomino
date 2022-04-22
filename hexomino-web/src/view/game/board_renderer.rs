@@ -214,9 +214,7 @@ impl<'a> BoardRenderer<'a> {
             } else {
                 player_to_color(Some(player))
             };
-            let fill = self
-                .ctx
-                .solid_brush(fill_color);
+            let fill = self.ctx.solid_brush(fill_color);
             self.render_block(Point::new(x, y), &fill);
         }
         let brush = if is_last {

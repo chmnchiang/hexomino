@@ -1,4 +1,4 @@
-use yew::{Component, Context, Properties, Callback, html};
+use yew::{html, Callback, Component, Context, Properties};
 
 use super::GameMode;
 

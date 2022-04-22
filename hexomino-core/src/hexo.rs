@@ -5,7 +5,7 @@ use super::{
 };
 use getset::{CopyGetters, Getters};
 use itertools::Itertools;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hexo(usize);

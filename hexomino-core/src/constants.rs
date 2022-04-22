@@ -1,5 +1,5 @@
-use crate::Tiles;
 use crate::Pos;
+use crate::Tiles;
 
 pub struct __Hexo {
     pub tiles: Tiles,

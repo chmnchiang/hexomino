@@ -40,6 +40,6 @@ macro_rules! cerr {
         $crate::Error::Client(format!("{}", $err))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::Error::Client($format!($fmt, $($arg)*))
+        $crate::Error::Client(format!($fmt, $($arg)*))
     };
 }

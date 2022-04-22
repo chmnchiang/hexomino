@@ -1,7 +1,7 @@
 use std::net::TcpListener;
 
 use anyhow::Result;
-use hexomino_api::{AuthPayload, AuthResponse};
+use api::{AuthPayload, AuthResponse};
 use hexomino_server::make_app;
 
 fn spawn_server() -> Result<String> {
@@ -10,7 +10,7 @@ fn spawn_server() -> Result<String> {
     tokio::spawn(async move {
         axum::Server::from_tcp(listener)
             .unwrap()
-            .serve(all_routes().into_make_service())
+            .serve(make_app())
             .await
             .unwrap();
     });

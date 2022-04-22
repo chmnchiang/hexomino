@@ -1,5 +1,8 @@
 use futures::{SinkExt, StreamExt};
-use gloo::{net::websocket::{futures::WebSocket, Message}, utils::document};
+use gloo::{
+    net::websocket::{futures::WebSocket, Message},
+    utils::document,
+};
 use hexomino_api::AuthResponse;
 use log::debug;
 use wasm_bindgen_futures::spawn_local;

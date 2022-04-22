@@ -4,8 +4,7 @@ use anyhow::Result;
 use hexomino_core::Action;
 use yew::Callback;
 
-use super::{SharedGameState, Game};
-
+use super::{Game, SharedGameState};
 
 pub struct TwoPlayerGame {
     game_state: SharedGameState,

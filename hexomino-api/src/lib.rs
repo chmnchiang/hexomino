@@ -1,5 +1,5 @@
+use hexomino_core::{Action, Player};
 use serde::{Deserialize, Serialize};
-use hexomino_core::{Player, Action};
 
 mod error;
 
@@ -41,28 +41,47 @@ pub struct HelloFromKernel {
     pub username: String,
 }
 
-pub enum MsgFromServer {
+pub enum Request {
+    GetRooms,
+    CreateRoom,
+    JoinRoom(RoomId),
+}
+
+pub enum Response {
     RoomMsg(RoomMsg),
     GameMsg(GameMsg),
+    Error(Error),
 }
+
+pub struct User {
+    pub id: UserId,
+    pub name: String,
+}
+
+#[derive(Copy, PartialEq, Eq)]
+pub struct UserId(pub i64);
+
 
 pub enum RoomMsg {
-    SyncRooms(SyncRooms),
+    SyncRooms(Vec<Room>),
+    JoinRoom(Room),
 }
 
-pub struct SyncRooms {
-    rooms: Vec<Room>
+pub struct Room {
+    pub id: RoomId,
+    pub users: Vec<User>,
 }
 
-pub struct Room;
+#[derive(Hash, Copy, PartialEq, Eq)]
+pub struct RoomId(pub i64);
 
 pub enum GameMsg {
     UserPlay(UserPlay),
 }
 
 pub struct UserPlay {
-    player: Player,
-    action: Action,
+    pub player: Player,
+    pub action: Action,
 }
 
 }

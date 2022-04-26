@@ -8,8 +8,14 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.56"
+axum = { version = "0.5.3", default-features = false, optional = true }
+derive_more = "0.99.17"
 hexomino-core = { version = "0.1.0", path = "../hexomino-core" }
+hyper = "0.14.18"
 serde = "1.0.136"
+thiserror = "1.0.30"
+uuid = { version = "1.0.0", features = ["serde"] }
 
 [features]
 internal-debug = []
+axum = ["dep:axum"]

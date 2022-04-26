@@ -1,14 +1,18 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
-use anyhow::anyhow;
-use api::{cerr, RoomId, RoomMsg, UserId};
+
+use api::{
+    Never, Room, RoomError, RoomId, StartWsError, StartWsRequest, UserId,
+    WsRequest, StartWsApi, Api,
+};
 use axum::extract::ws::{Message, WebSocket};
-use tokio::time::timeout;
-use tracing::{debug, error, info, trace};
+use once_cell::sync::OnceCell;
+use tokio::{spawn, time::timeout};
+use tracing::{debug, error, trace};
 
 use crate::{
-    http::{authorize_jwt, Claims},
-    DbPool,
+    auth::{authorize_jwt, Claims},
+    DbPool, result::ApiResult,
 };
 
 use self::{
@@ -16,13 +20,13 @@ use self::{
     user::{User, UserPool},
 };
 
-mod room;
-mod user;
+pub mod room;
+pub mod user;
 
 #[derive(Debug)]
 enum KernelMsg {
     ConnectionLost(User),
-    UserMessage(User, api::Request),
+    UserMessage(User, WsRequest),
 }
 
 pub struct Kernel {
@@ -30,52 +34,75 @@ pub struct Kernel {
     room_manager: RoomManager,
 }
 
-async fn ws_send_api_error(mut ws: WebSocket, err: api::Error) {
-    if let Ok(buf) = bincode::serialize(&err) {
+async fn send_start_ws_error(mut ws: WebSocket, err: StartWsError) {
+    let msg: <StartWsApi as Api>::Response = Err(err);
+    if let Ok(buf) = bincode::serialize(&msg) {
         let _ = ws.send(Message::Binary(buf)).await;
     } else {
-        error!("Failed to serialize error message = {:?}", err);
+        debug!("failed to serialize StartWsResult: {:?}", msg.unwrap_err());
     }
 }
 
+static KERNEL: OnceCell<Kernel> = OnceCell::new();
+
 impl Kernel {
-    pub fn new(db: DbPool) -> Arc<Self> {
-        Arc::new_cyclic(|me| Self {
-            room_manager: RoomManager::new(),
-            user_pool: UserPool::new(me.clone(), db),
-        })
+    pub fn init(db: DbPool) {
+        KERNEL
+            .set(Self {
+                room_manager: RoomManager::new(),
+                user_pool: UserPool::new(db),
+            })
+            .map_err(|_| ())
+            .expect("kernel is initialized twice");
+
+        Kernel::spawn_services();
     }
 
-    pub async fn new_connection(self: Arc<Kernel>, mut ws: WebSocket) {
+    pub fn get() -> &'static Kernel {
+        KERNEL.get().expect("kernel is not initialized")
+    }
+
+    pub async fn new_connection(&self, mut ws: WebSocket) {
         debug!("new connection");
         let result = authorize_ws(&mut ws).await;
         match result {
             Ok(claims) => self.user_pool.user_ws_connect(UserId(claims.id), ws).await,
-            Err(err) => ws_send_api_error(ws, err).await,
+            Err(err) => send_start_ws_error(ws, err).await,
         }
-    }
-}
-
-const WS_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
-
-async fn authorize_ws(ws: &mut WebSocket) -> api::Result<Claims> {
-    let recv_future = timeout(WS_AUTH_TIMEOUT, ws.recv());
-    let result = recv_future
-        .await
-        .map_err(|_| cerr!("Start connection timeout"))?;
-    let result = result.ok_or_else(|| cerr!("Start connection failed, no message"))?;
-    let result = result.map_err(|e| anyhow!(e))?;
-    if let Message::Text(token) = result {
-        match authorize_jwt(&token).await {
-            Err(_) => Err(cerr!("Authenticate error")),
-            Ok(claims) => Ok(claims),
-        }
-    } else {
-        Err(cerr!("Start connection failed, wrong message type"))
     }
 }
 
 impl Kernel {
+    pub async fn get_user(&self, user_id: UserId) -> Option<User> {
+        self.user_pool.get(user_id)
+    }
+
+    pub async fn get_room(&self, _user: User, room_id: RoomId) -> ApiResult<Room, RoomError> {
+        Ok(self.room_manager.get(room_id)?)
+    }
+
+    pub async fn list_rooms(&self) -> ApiResult<Vec<Room>, Never> {
+        Ok(self.room_manager.list_rooms())
+    }
+    pub async fn join_room(&self, user: User, room_id: RoomId) -> ApiResult<(), RoomError> {
+        self.room_manager.join_room(user.clone(), room_id)
+    }
+    pub async fn create_room(&self, user: User) -> ApiResult<RoomId, RoomError> {
+        self.room_manager.create_room(user.clone())
+    }
+}
+
+impl Kernel {
+    fn spawn_services() {
+        spawn(async {
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                Kernel::get().user_pool.garbage_collection();
+            }
+        });
+    }
+
     async fn update(&self, message: KernelMsg) {
         use KernelMsg::*;
         trace!("update message = {:?}", message);
@@ -96,50 +123,40 @@ impl Kernel {
             }
             Message::Ping(_) | Message::Pong(_) => return,
             _ => {
-                info!("user send incorrect ws type");
+                debug!("user send incorrect ws type");
                 return;
             }
         };
-        if let Ok(msg) = bincode::deserialize::<api::Request>(&msg) {
-            self.update(KernelMsg::UserMessage(user, msg));
+        if let Ok(msg) = bincode::deserialize::<WsRequest>(&msg) {
+            self.update(KernelMsg::UserMessage(user, msg)).await;
         } else {
-            info!("deserialize user data failed");
+            debug!("deserialize user data failed");
         }
     }
 
-    async fn handle_user_message(&self, user: User, msg: api::Request) {
-        use api::Request::*;
-        match msg {
-            GetRooms => {
-                self.get_rooms(user).await;
-            }
-            JoinRoom(room_id) => {
-                self.join_room(user, room_id).await;
-            }
-            CreateRoom => {
-                self.create_room(user).await;
-            }
-            _ => {
-                todo!();
-            }
-        }
+    async fn handle_user_message(&self, _user: User, msg: WsRequest) {
+        match msg {}
     }
 }
 
-impl Kernel {
-    async fn get_rooms(&self, user: User) {
-        let rooms = self.room_manager.get_rooms();
-        let resp = api::Response::RoomMsg(RoomMsg::SyncRooms(rooms));
-        user.send(resp).await;
-    }
-    async fn join_room(&self, user: User, room_id: RoomId) {
-        let room = self.room_manager.join_room(user.clone(), room_id);
-        let resp = room.map(|room| api::Response::RoomMsg(RoomMsg::JoinRoom(room)));
-        user.send_result(resp).await;
-    }
-    async fn create_room(&self, user: User) {
-        let room = self.room_manager.create_room(user.clone());
-        let resp = room.map(|room| api::Response::RoomMsg(RoomMsg::JoinRoom(room)));
-        user.send_result(resp).await;
+const WS_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
+
+async fn authorize_ws(ws: &mut WebSocket) -> Result<Claims, StartWsError> {
+    use StartWsError::*;
+    let recv_future = timeout(WS_AUTH_TIMEOUT, ws.recv());
+    let result = recv_future.await.map_err(|_| Timeout)?;
+    let result = result.ok_or_else(|| InitialHandshakeFailed)?;
+    let result = result.map_err(|e| {
+        error!("ws receive error = {}", e);
+        InternalError
+    })?;
+    if let Message::Binary(token) = result {
+        let request = bincode::deserialize::<StartWsRequest>(&token)
+            .map_err(|_| InitialHandshakeFailed)?;
+        Ok(authorize_jwt(&request.token)
+            .await
+            .ok_or_else(|| WsAuthError)?)
+    } else {
+        Err(InitialHandshakeFailed)?
     }
 }

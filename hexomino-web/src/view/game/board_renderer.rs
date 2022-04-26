@@ -1,4 +1,3 @@
-use guard::guard;
 use hexomino_core::{
     constants::{COLS, ROWS},
     Board, Hexo, PlacedHexo, Player, Pos, RHexo,
@@ -171,8 +170,8 @@ impl<'a> BoardRenderer<'a> {
     }
 
     fn render_mouse(&mut self, transform: Affine) {
-        guard!(let Some(mouse_point) = self.config.mouse_point else { return });
-        guard!(let Some(rhexo) = self.config.rhexo else { return });
+        let Some(mouse_point) = self.config.mouse_point else { return };
+        let Some(rhexo) = self.config.rhexo else { return };
         let mouse_pos = MousePos::from_point(transform.inverse() * mouse_point);
         let real_point = mouse_pos.to_render_point();
         match mouse_pos {
@@ -184,7 +183,7 @@ impl<'a> BoardRenderer<'a> {
                     this.render_placed_hexos(
                         &rhexo.move_to(Pos::ZERO).placed_by(Player::First),
                         false,
-                    );
+                        );
                 });
             }
         }

@@ -106,12 +106,10 @@ impl Component for BoardCanvas {
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         use BoardMsg::*;
 
-        guard::guard!(
-            let Some(ref web_render_context) = self.web_render_context else {
-                debug!("web_render_context is not ready");
-                return false;
-            }
-        );
+        let Some(ref web_render_context) = self.web_render_context else {
+            debug!("web_render_context is not ready");
+            return false;
+        };
 
         {
             match msg {
@@ -119,12 +117,10 @@ impl Component for BoardCanvas {
                     self.render_state.rhexo = Some(hexo.apply(Transform::I));
                 }
                 MouseMoved(point) => {
-                    guard::guard!(
-                        let Some(point) = self.relative_mouse_point(point) else {
-                            error!("can't get relative mouse position");
-                            return false;
-                        }
-                    );
+                    let Some(point) = self.relative_mouse_point(point) else {
+                        error!("can't get relative mouse position");
+                        return false;
+                    };
                     self.render_state.mouse_point = Some(point);
                 }
                 Clicked => {

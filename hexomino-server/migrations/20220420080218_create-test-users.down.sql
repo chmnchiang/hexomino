@@ -1,2 +1,2 @@
 DELETE FROM Users
-WHERE name IN ("user1", "user2");
+WHERE name IN ('user1', 'user2');

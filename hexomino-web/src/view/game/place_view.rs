@@ -1,4 +1,3 @@
-use guard::guard;
 use hexomino_core::{Hexo, MovedHexo, Player};
 use yew::{html, Callback, Component, Context, Html, Properties};
 
@@ -75,7 +74,7 @@ impl Component for PlaceView {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let state = ctx.props().state.borrow();
         let core_state = &state.core_game_state;
-        guard!(let Some(current_player) = core_state.current_player() else {return html!{}});
+        let Some(current_player) = core_state.current_player() else {return html!{}};
         let select_onclick = ctx.link().callback(PlaceAction::Select);
         let shared_link = SharedLink::<BoardCanvas>::new();
         ctx.link()

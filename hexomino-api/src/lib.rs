@@ -1,91 +1,40 @@
-use hexomino_core::{Action, Player};
-use serde::{Deserialize, Serialize};
+mod auth;
+mod room;
+mod user;
+mod ws;
 
-mod error;
+pub use auth::*;
+pub use room::*;
+pub use user::*;
+pub use ws::*;
 
-macro_rules! derive_api {
+//#[cfg(feature = "axum")]
+//pub use crate::axum::*;
+
+macro_rules! derive_api_data {
     () => {};
     ($item:item $($rest:item)*) => {
-        #[derive(Serialize, Deserialize, Debug, Clone)]
+        #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
         $item
 
-        derive_api!($($rest)*);
+        derive_api_data!($($rest)*);
     };
 }
+pub(crate) use derive_api_data;
 
-#[derive(Serialize, Deserialize, Clone)]
-pub enum Error {
-    Client(String),
-    Internal(String),
+pub trait ApiData:
+    serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug + Clone
+{
+}
+impl<T> ApiData for T where
+    T: serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug + Clone
+{
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-derive_api! {
-
-pub struct AuthPayload {
-    pub username: String,
-    pub password: String,
+pub trait Api {
+    type Request: ApiData;
+    type Response: ApiData;
 }
-
-pub struct AuthResponse {
-    pub username: String,
-    pub token: String,
+derive_api_data! {
+    pub enum Never {}
 }
-
-pub struct StartWsConnection {
-    pub token: String,
-}
-
-pub struct HelloFromKernel {
-    pub username: String,
-}
-
-pub enum Request {
-    GetRooms,
-    CreateRoom,
-    JoinRoom(RoomId),
-}
-
-pub enum Response {
-    RoomMsg(RoomMsg),
-    GameMsg(GameMsg),
-    Error(Error),
-}
-
-pub struct User {
-    pub id: UserId,
-    pub name: String,
-}
-
-#[derive(Copy, PartialEq, Eq)]
-pub struct UserId(pub i64);
-
-
-pub enum RoomMsg {
-    SyncRooms(Vec<Room>),
-    JoinRoom(Room),
-}
-
-pub struct Room {
-    pub id: RoomId,
-    pub users: Vec<User>,
-}
-
-#[derive(Hash, Copy, PartialEq, Eq)]
-pub struct RoomId(pub i64);
-
-pub enum GameMsg {
-    UserPlay(UserPlay),
-}
-
-pub struct UserPlay {
-    pub player: Player,
-    pub action: Action,
-}
-
-}
-
-pub type WsConnectResult = Result<HelloFromKernel>;
-
-//pub struct WsConnect

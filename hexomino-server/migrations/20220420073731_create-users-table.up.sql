@@ -1,5 +1,5 @@
 CREATE TABLE Users (
-  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  id uuid NOT NULL PRIMARY KEY default gen_random_uuid(),
   name TEXT NOT NULL,
   password TEXT NOT NULL
 );

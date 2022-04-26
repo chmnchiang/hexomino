@@ -1,4 +1,3 @@
-use guard::guard;
 use hexomino_core::{Action, GamePhase, Hexo};
 use yew::{html, Component, Context, Html, Properties};
 
@@ -68,7 +67,7 @@ impl Component for GameView {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        guard!(let Some(ref game_bundle) = self.game_bundle else { return html!{} });
+        let Some(ref game_bundle) = self.game_bundle else { return html!{} };
         let game_state = &game_bundle.game_state;
         let game_state_borrow = game_state.borrow();
         let core_state = &game_state_borrow.core_game_state;

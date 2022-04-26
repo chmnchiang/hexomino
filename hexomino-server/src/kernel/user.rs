@@ -5,21 +5,34 @@ use std::{
 };
 
 use anyhow::anyhow;
-use api::{cerr, HelloFromKernel, UserId};
-use axum::extract::ws::{Message, WebSocket};
+use api::{Api, RoomId, StartWsApi, StartWsError, StartWsResponse, UserId, WsResult};
+use axum::{
+    async_trait,
+    extract::{
+        ws::{Message, WebSocket},
+        FromRequest, RequestParts,
+    },
+    headers::{authorization::Bearer, Authorization},
+    TypedHeader,
+};
+use dashmap::DashMap;
 use derivative::Derivative;
 use futures::{
     stream::{SplitSink, SplitStream},
     FutureExt, SinkExt, StreamExt as _,
 };
+use getset::{CopyGetters, Getters};
 use parking_lot::RwLock;
 use stream_cancel::{StreamExt as _, TakeUntilIf, Trigger, Tripwire};
 use tokio::{spawn, sync::Mutex};
-use tracing::debug;
+use tracing::{debug, trace};
 
-use crate::DbPool;
-
-use super::{ws_send_api_error, Kernel};
+use crate::{
+    auth::authorize_jwt,
+    kernel::{send_start_ws_error, Kernel},
+    result::CommonError,
+    DbPool,
+};
 
 #[derive(Clone, Debug)]
 pub struct User(Arc<UserInner>);
@@ -46,18 +59,24 @@ impl From<User> for api::User {
 
 impl From<&User> for api::User {
     fn from(user: &User) -> Self {
-        Self { id: user.id, name: user.name() }
+        Self {
+            id: user.id,
+            name: user.name(),
+        }
     }
 }
 
-
-#[derive(Derivative)]
+#[derive(Derivative, Getters, CopyGetters)]
 #[derivative(Debug)]
 pub struct UserInner {
+    #[getset(get_copy = "pub")]
     id: UserId,
+    #[getset(get = "pub")]
     data: RwLock<UserData>,
+    #[getset(get = "pub")]
     state: RwLock<UserState>,
     #[derivative(Debug = "ignore")]
+    #[getset(get = "pub")]
     connection: Connection,
 }
 
@@ -67,11 +86,20 @@ pub struct UserData {
 }
 
 #[derive(Debug)]
-pub struct UserState;
+pub struct UserState {
+    pub status: UserStatus,
+}
 
-type CancellableStream<T> = TakeUntilIf<SplitStream<T>, Tripwire>;
+#[derive(Debug)]
+pub enum UserStatus {
+    Idle,
+    InRoom(RoomId),
+    InGame,
+}
 
-struct Connection {
+type WsStream = TakeUntilIf<SplitStream<WebSocket>, Tripwire>;
+
+pub struct Connection {
     inner: RwLock<Option<ConnectionInner>>,
 }
 
@@ -80,28 +108,40 @@ struct ConnectionInner {
     _recv_trigger: Trigger,
 }
 
-impl Connection {
-    fn new(ws: WebSocket) -> (Self, CancellableStream<WebSocket>) {
+impl ConnectionInner {
+    fn new(ws: WebSocket) -> (Self, WsStream) {
         let (sender, receiver) = ws.split();
         let (trigger, tripwire) = Tripwire::new();
         let receiver = receiver.take_until_if(tripwire);
         (
-            Connection {
-                inner: RwLock::new(Some(ConnectionInner {
-                    sender: Arc::new(Mutex::new(sender)),
-                    _recv_trigger: trigger,
-                })),
+            ConnectionInner {
+                sender: Arc::new(Mutex::new(sender)),
+                _recv_trigger: trigger,
             },
             receiver,
         )
     }
+}
+
+impl Connection {
+    fn new() -> Self {
+        Self {
+            inner: RwLock::new(None),
+        }
+    }
+
+    fn set(&self, ws: WebSocket) -> WsStream {
+        let (inner, stream) = ConnectionInner::new(ws);
+        *self.inner.write() = Some(inner);
+        stream
+    }
 
     fn drop(&self) {
-        let x = self.inner.write();
         *self.inner.write() = None;
     }
 
     fn send(&self, msg: Message) -> impl Future<Output = anyhow::Result<()>> {
+        debug!("send msg = {msg:?}");
         let connection = &self.inner.read();
         if let Some(connection) = connection.as_ref() {
             let sender = connection.sender.clone();
@@ -131,20 +171,10 @@ impl UserInner {
         self.connection.drop();
     }
 
-    pub fn send(&self, resp: api::Response) -> impl Future<Output = anyhow::Result<()>> {
+    pub fn send(&self, resp: WsResult) -> impl Future<Output = anyhow::Result<()>> {
         self.connection.send(Message::Binary(
             bincode::serialize(&resp).expect(&format!("cannot serialzie {resp:?}")),
         ))
-    }
-
-    pub fn send_result(
-        &self,
-        resp: api::Result<api::Response>,
-    ) -> impl Future<Output = anyhow::Result<()>> {
-        match resp {
-            Ok(resp) => self.send(resp),
-            Err(err) => self.send(api::Response::Error(err)),
-        }
     }
 }
 
@@ -166,59 +196,109 @@ impl UserData {
 }
 
 pub struct UserPool {
-    kernel: Weak<Kernel>,
     db: DbPool,
+    users: DashMap<UserId, Weak<UserInner>>,
 }
 
 impl UserPool {
-    pub fn new(kernel: Weak<Kernel>, db: DbPool) -> Self {
-        Self { kernel, db }
+    pub fn new(db: DbPool) -> Self {
+        Self {
+            db,
+            users: DashMap::new(),
+        }
     }
 
-    fn kernel(&self) -> Arc<Kernel> {
-        self.kernel.upgrade().expect("kernel is not valid")
+    pub fn get(&self, id: UserId) -> Option<User> {
+        use dashmap::mapref::entry::Entry::*;
+        match self.users.entry(id) {
+            Occupied(occupied) => match occupied.get().upgrade() {
+                Some(user) => Some(User(user)),
+                None => {
+                    occupied.remove();
+                    None
+                }
+            },
+            Vacant(_) => None,
+        }
+    }
+
+    pub fn garbage_collection(&self) {
+        self.users.retain(|_, weak| Weak::strong_count(&weak) != 0);
+        trace!("users size = {}", self.users.len())
     }
 
     pub async fn user_ws_connect(&self, id: UserId, ws: WebSocket) {
-        let data = match UserData::fetch(&self.db, id).await {
-            None => return ws_send_api_error(ws, cerr!("User does not exists")).await,
-            Some(data) => data,
-        };
-        let (connection, receiver) = Connection::new(ws);
-        let user = UserInner {
-            id,
-            data: RwLock::new(data),
-            state: RwLock::new(UserState),
-            connection,
-        };
-        let user = User(Arc::new(user));
-        spawn(self.connection_recv_loop(user.clone(), receiver));
-        let fut = user.connection.send(Message::Binary(
-            bincode::serialize(&HelloFromKernel {
-                username: user.name(),
-            })
-            .unwrap(),
-        ));
-        fut.await;
-    }
+        let user = if let Some(user) = self.get(id) {
+            user
+        } else {
+            let data = match UserData::fetch(&self.db, id).await {
+                None => {
+                    debug!("user id={} does not exists", id);
+                    send_start_ws_error(ws, StartWsError::WsAuthError.into()).await;
+                    return;
+                }
+                Some(data) => data,
+            };
+            let user = UserInner {
+                id,
+                data: RwLock::new(data),
+                state: RwLock::new(UserState {
+                    status: UserStatus::Idle,
+                }),
+                connection: Connection::new(),
+            };
 
-    fn connection_recv_loop(
-        &self,
-        user: User,
-        mut receiver: CancellableStream<WebSocket>,
-    ) -> impl Future<Output = ()> {
-        let kernel = self.kernel();
-        async move {
-            while let Some(msg) = receiver.next().await {
-                match msg {
-                    Ok(msg) => {
-                        kernel.handle_user_ws_message(user.clone(), msg).await;
-                    }
-                    Err(_) => {
-                        user.drop_connection();
-                    }
+            User(Arc::new(user))
+        };
+        let ws_stream = user.connection.set(ws);
+        spawn(connection_recv_loop(user.clone(), ws_stream));
+        self.users.insert(user.id(), Arc::downgrade(&user.0));
+
+        let msg: <StartWsApi as Api>::Response = Ok(StartWsResponse {
+            username: user.name(),
+        });
+        if let Ok(buf) = bincode::serialize(&msg) {
+            let _ = user.connection().send(Message::Binary(buf)).await;
+            debug!("User connect ok");
+        } else {
+            debug!("failed to serialize StartWsResult: {:?}", msg.unwrap_err());
+        }
+    }
+}
+
+fn connection_recv_loop(user: User, mut receiver: WsStream) -> impl Future<Output = ()> {
+    async move {
+        trace!("recv loop");
+        while let Some(msg) = receiver.next().await {
+            match msg {
+                Ok(msg) => {
+                    trace!("user send");
+                    Kernel::get()
+                        .handle_user_ws_message(user.clone(), msg)
+                        .await;
+                }
+                Err(_) => {
+                    user.drop_connection();
                 }
             }
         }
+        trace!("end of recv loop");
+    }
+}
+
+#[async_trait]
+impl<B: Send> FromRequest<B> for User {
+    type Rejection = CommonError;
+
+    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let TypedHeader(Authorization(bearer)) =
+            TypedHeader::<Authorization<Bearer>>::from_request(req)
+                .await
+                .map_err(|_| CommonError::Unauthorized)?;
+
+        let claims = authorize_jwt(bearer.token())
+            .await
+            .ok_or_else(|| CommonError::Unauthorized)?;
+        Kernel::get().get_user(UserId(claims.id)).await.ok_or_else(|| CommonError::Unauthorized)
     }
 }

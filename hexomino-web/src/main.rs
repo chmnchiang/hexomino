@@ -1,12 +1,15 @@
+#![feature(let_else)]
+#![feature(try_blocks)]
 #![allow(dead_code)]
 
 mod game;
 mod util;
 mod view;
+mod context;
 
 use log::*;
 
-use view::MainView;
+use view::App;
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "wee_alloc")]
@@ -19,7 +22,7 @@ pub fn main() -> Result<(), JsValue> {
 
     wasm_logger::init(wasm_logger::Config::default());
     info!("start main");
-    yew::start_app::<MainView>();
+    yew::start_app::<App>();
     info!("registered yew component");
     Ok(())
 }

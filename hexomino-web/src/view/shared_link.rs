@@ -1,23 +1,43 @@
 use std::{
-    cell::UnsafeCell,
+    cell::RefCell,
+    fmt::Debug,
     rc::{Rc, Weak},
 };
 
 use yew::{html::Scope, Component};
 
-#[derive(Clone)]
-pub struct SharedLink<COMP: Component>(Rc<UnsafeCell<Option<Scope<COMP>>>>);
+pub struct SharedLink<COMP: Component>(Rc<RefCell<Option<Scope<COMP>>>>);
 
-pub struct WeakLink<COMP: Component>(Weak<UnsafeCell<Option<Scope<COMP>>>>);
+impl<COMP: Component> Clone for SharedLink<COMP> {
+    fn clone(&self) -> Self {
+        SharedLink(Rc::clone(&self.0))
+    }
+}
+
+impl<COMP: Component> Debug for SharedLink<COMP> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SharedLink({:?}, {})",
+            Rc::as_ptr(&self.0),
+            if self.0.borrow().is_some() {
+                "installed"
+            } else {
+                "empty"
+            }
+        )
+    }
+}
+
+pub struct WeakLink<COMP: Component>(Weak<RefCell<Option<Scope<COMP>>>>);
 
 impl<COMP: Component> SharedLink<COMP> {
     pub fn new() -> Self {
-        Self(Rc::new(UnsafeCell::new(None)))
+        Self(Rc::new(RefCell::new(None)))
     }
 
     pub fn install(&self, link: Scope<COMP>) {
-        let inner = unsafe { &mut *self.0.get() };
-        assert!(inner.is_none());
+        let mut inner = self.0.borrow_mut();
         *inner = Some(link);
     }
 
@@ -26,9 +46,9 @@ impl<COMP: Component> SharedLink<COMP> {
         WeakLink(weak)
     }
 
-    pub fn get(&self) -> &Scope<COMP> {
-        let inner = unsafe { &*self.0.get() };
-        inner.as_ref().unwrap()
+    pub fn get(&self) -> Scope<COMP> {
+        let inner = self.0.borrow();
+        inner.as_ref().unwrap().clone()
     }
 }
 

@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use anyhow::{anyhow};
+
 use api::{LoginRequest, LoginResponse};
 use gloo::net::http::Request;
 

@@ -6,7 +6,7 @@ use std::{
     rc::Rc,
 };
 
-use anyhow::{anyhow, bail, Context as _, Error};
+use anyhow::{anyhow, Context as _};
 use api::{Api, StartWsApi, StartWsError, StartWsRequest, WsResult};
 use futures::{
     stream::{SplitSink, SplitStream, TakeUntil},

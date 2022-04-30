@@ -3,7 +3,7 @@ use std::{future::Future, rc::Rc};
 use anyhow::anyhow;
 use api::{Api, WsResult};
 use futures::FutureExt;
-use gloo::{net::http::{Request, Response}, utils::errors::JsError};
+use gloo::{net::http::{Request}};
 use yew::Callback;
 
 use self::{auth::Auth, ws::WsConnection};
@@ -27,8 +27,8 @@ impl Eq for Connection {}
 #[derive(PartialEq, Eq)]
 pub enum ConnectionStatus {
     LoggedOut,
-    LoggedIn,
-    WsConnected,
+    WsNotConnected,
+    Connected,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -73,9 +73,9 @@ impl Connection {
         if !self.auth.authenticated() {
             ConnectionStatus::LoggedOut
         } else if !self.ws.connected() {
-            ConnectionStatus::LoggedIn
+            ConnectionStatus::WsNotConnected
         } else {
-            ConnectionStatus::WsConnected
+            ConnectionStatus::Connected
         }
     }
 

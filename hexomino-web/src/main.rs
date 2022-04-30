@@ -1,11 +1,12 @@
+#![feature(if_let_guard)]
 #![feature(let_else)]
 #![feature(try_blocks)]
 #![allow(dead_code)]
 
+mod context;
 mod game;
 mod util;
 mod view;
-mod context;
 
 use log::*;
 

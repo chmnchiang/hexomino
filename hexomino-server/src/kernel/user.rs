@@ -51,21 +51,6 @@ impl PartialEq for User {
     }
 }
 
-impl From<User> for api::User {
-    fn from(user: User) -> Self {
-        user.into()
-    }
-}
-
-impl From<&User> for api::User {
-    fn from(user: &User) -> Self {
-        Self {
-            id: user.id,
-            name: user.name(),
-        }
-    }
-}
-
 #[derive(Derivative, Getters, CopyGetters)]
 #[derivative(Debug)]
 pub struct UserInner {
@@ -141,7 +126,6 @@ impl Connection {
     }
 
     fn send(&self, msg: Message) -> impl Future<Output = anyhow::Result<()>> {
-        debug!("send msg = {msg:?}");
         let connection = &self.inner.read();
         if let Some(connection) = connection.as_ref() {
             let sender = connection.sender.clone();
@@ -167,14 +151,35 @@ impl UserInner {
         self.data.read().name.clone()
     }
 
+    pub fn to_api(&self) -> api::User {
+        api::User {
+            id: self.id,
+            name: self.name(),
+        }
+    }
+
     pub fn drop_connection(&self) {
         self.connection.drop();
     }
 
     pub fn send(&self, resp: WsResult) -> impl Future<Output = anyhow::Result<()>> {
         self.connection.send(Message::Binary(
-            bincode::serialize(&resp).expect(&format!("cannot serialzie {resp:?}")),
+            bincode::serialize(&resp).unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
         ))
+    }
+
+    pub fn spawn_send(&self, resp: WsResult) {
+        spawn(self.connection.send(Message::Binary(
+            bincode::serialize(&resp).unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
+        )).map(|_| ()));
+    }
+
+    pub fn send_initial_position(&self) {
+        use UserStatus::*;
+        match self.state().read().status {
+            InRoom(room_id) => self.spawn_send(WsResult::MoveToRoom(room_id)),
+            _ => (),
+        }
     }
 }
 
@@ -223,7 +228,7 @@ impl UserPool {
     }
 
     pub fn garbage_collection(&self) {
-        self.users.retain(|_, weak| Weak::strong_count(&weak) != 0);
+        self.users.retain(|_, weak| Weak::strong_count(weak) != 0);
         trace!("users size = {}", self.users.len())
     }
 
@@ -234,7 +239,7 @@ impl UserPool {
             let data = match UserData::fetch(&self.db, id).await {
                 None => {
                     debug!("user id={} does not exists", id);
-                    send_start_ws_error(ws, StartWsError::WsAuthError.into()).await;
+                    send_start_ws_error(ws, StartWsError::WsAuthError).await;
                     return;
                 }
                 Some(data) => data,
@@ -260,30 +265,29 @@ impl UserPool {
         if let Ok(buf) = bincode::serialize(&msg) {
             let _ = user.connection().send(Message::Binary(buf)).await;
             debug!("User connect ok");
+            user.send_initial_position();
         } else {
             debug!("failed to serialize StartWsResult: {:?}", msg.unwrap_err());
         }
     }
 }
 
-fn connection_recv_loop(user: User, mut receiver: WsStream) -> impl Future<Output = ()> {
-    async move {
-        trace!("recv loop");
-        while let Some(msg) = receiver.next().await {
-            match msg {
-                Ok(msg) => {
-                    trace!("user send");
-                    Kernel::get()
-                        .handle_user_ws_message(user.clone(), msg)
-                        .await;
-                }
-                Err(_) => {
-                    user.drop_connection();
-                }
+async fn connection_recv_loop(user: User, mut receiver: WsStream) {
+    trace!("recv loop");
+    while let Some(msg) = receiver.next().await {
+        match msg {
+            Ok(msg) => {
+                trace!("user send");
+                Kernel::get()
+                    .handle_user_ws_message(user.clone(), msg)
+                    .await;
+            }
+            Err(_) => {
+                user.drop_connection();
             }
         }
-        trace!("end of recv loop");
     }
+    trace!("end of recv loop");
 }
 
 #[async_trait]
@@ -298,7 +302,7 @@ impl<B: Send> FromRequest<B> for User {
 
         let claims = authorize_jwt(bearer.token())
             .await
-            .ok_or_else(|| CommonError::Unauthorized)?;
-        Kernel::get().get_user(UserId(claims.id)).await.ok_or_else(|| CommonError::Unauthorized)
+            .ok_or(CommonError::Unauthorized)?;
+        Kernel::get().get_user(UserId(claims.id)).await.ok_or(CommonError::Unauthorized)
     }
 }

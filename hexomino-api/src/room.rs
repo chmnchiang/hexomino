@@ -1,15 +1,30 @@
 use thiserror::Error;
 
-use crate::{derive_api_data, User, Api};
+use crate::{derive_api_data, Api, User};
 
 derive_api_data! {
     pub struct Room {
         pub id: RoomId,
         pub users: Vec<User>,
     }
-    #[derive(Hash, Copy, PartialEq, Eq, derive_more::Display)]
-    #[display(fmt = "{}",  _0)]
+    #[derive(Hash, Copy, PartialEq, Eq)]
+    #[derive(derive_more::Display, derive_more::FromStr)]
     pub struct RoomId(pub i64);
+
+    pub struct RoomUser {
+        pub user: User,
+        pub is_ready: bool,
+    }
+
+    pub struct JoinedRoom {
+        pub id: RoomId,
+        pub users: Vec<RoomUser>,
+    }
+
+    pub enum RoomAction {
+        Ready,
+        Unready,
+    }
 }
 
 derive_api_data! {
@@ -59,8 +74,18 @@ derive_api_data! {
     pub struct GetRoomApi;
 }
 pub type GetRoomRequest = RoomId;
-pub type GetRoomResponse = Room;
+pub type GetRoomResponse = JoinedRoom;
 impl Api for GetRoomApi {
     type Request = GetRoomRequest;
     type Response = Result<GetRoomResponse>;
+}
+
+derive_api_data! {
+    pub struct RoomActionApi;
+}
+pub type RoomActionRequest = RoomAction;
+pub type RoomActionResponse = ();
+impl Api for RoomActionApi {
+    type Request = RoomActionRequest;
+    type Response = Result<()>;
 }

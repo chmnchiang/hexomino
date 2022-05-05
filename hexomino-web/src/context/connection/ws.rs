@@ -1,9 +1,10 @@
 use std::{
     cell::RefCell,
     future::Future,
-    mem::{self, ManuallyDrop},
+    mem::{self},
     pin::Pin,
-    rc::Rc,
+    rc::{Rc, Weak},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use anyhow::{anyhow, Context as _};
@@ -29,7 +30,8 @@ use super::Result;
 
 #[derive(Default)]
 pub struct WsConnection {
-    inner: RefCell<Option<WsConnectionInner>>,
+    inner: RefCell<Option<Rc<WsConnectionInner>>>,
+    bus: Rc<WsMessageBus>,
 }
 
 impl PartialEq for WsConnection {
@@ -41,17 +43,12 @@ impl Eq for WsConnection {}
 
 type WsSender = SplitSink<WebSocket, Message>;
 type WsReceiver = TakeUntil<SplitStream<WebSocket>, Tripwire>;
-type WsCallback = Callback<WsResult>;
-
-struct WebsocketWrapper {
-    inner: ManuallyDrop<WebSocket>,
-}
+pub type WsCallback = Callback<Rc<WsResult>>;
 
 impl WsConnection {
     pub async fn connect(
-        self: Rc<Self>,
+        &self,
         token: String,
-        recv_callback: WsCallback,
         error_callback: Callback<ConnectionError>,
     ) -> Result<()> {
         let host = document()
@@ -84,7 +81,7 @@ impl WsConnection {
         .await;
 
         if result.is_ok() {
-            self.setup_connection(ws, recv_callback, error_callback);
+            self.setup_connection(ws, self.bus.clone(), error_callback);
         } else {
             mem::forget(ws);
         }
@@ -99,10 +96,14 @@ impl WsConnection {
         *self.inner.borrow_mut() = None;
     }
 
+    pub fn register_callback(&self, callback: WsCallback) -> WsListenerToken {
+        self.bus.clone().register(callback)
+    }
+
     fn setup_connection(
         &self,
         ws: WebSocket,
-        recv_callback: WsCallback,
+        bus: Rc<WsMessageBus>,
         error_callback: Callback<ConnectionError>,
     ) {
         let (sender, receiver) = ws.split();
@@ -112,16 +113,18 @@ impl WsConnection {
             error_callback: error_callback.clone(),
             _trigger: trigger,
         };
-        spawn_receive_loop(receiver.take_until(tripwire), recv_callback, error_callback);
-        *self.inner.borrow_mut() = Some(connection);
+        spawn_receive_loop(receiver.take_until(tripwire), bus, error_callback);
+        *self.inner.borrow_mut() = Some(Rc::new(connection));
     }
 
     pub async fn send(self: Rc<Self>, msg: api::WsRequest) -> Result<()> {
-        let connection = self.inner.borrow();
-        let connection = connection
-            .as_ref()
-            .ok_or_else(|| anyhow!("connection is not set up when sending messages"))?;
         debug!("send = {:?}", msg);
+        let connection = self
+            .inner
+            .borrow()
+            .as_ref()
+            .ok_or_else(|| anyhow!("connection is not set up when sending messages"))?
+            .clone();
         let msg = bincode::serialize(&msg).anyhow()?;
         let mut sender = connection.sender.lock().await;
         sender
@@ -140,7 +143,7 @@ struct WsConnectionInner {
 
 fn spawn_receive_loop(
     mut receiver: WsReceiver,
-    callback: WsCallback,
+    bus: Rc<WsMessageBus>,
     error_callback: Callback<ConnectionError>,
 ) {
     spawn_local(async move {
@@ -150,7 +153,7 @@ fn spawn_receive_loop(
                 let msg = receiver
                     .next()
                     .await
-                    .ok_or_else(|| ConnectionError::WsConnectionClose)?
+                    .ok_or(ConnectionError::WsConnectionClose)?
                     .map_err(|_| ConnectionError::WsConnectionClose)?;
                 if let Message::Bytes(msg) = msg {
                     let msg = bincode::deserialize::<WsResult>(&msg)
@@ -163,7 +166,7 @@ fn spawn_receive_loop(
             .await;
 
             match result {
-                Ok(x) => callback.emit(x),
+                Ok(x) => bus.broadcast(x),
                 Err(err) => {
                     error_callback.emit(err);
                     break;
@@ -203,5 +206,65 @@ impl Trigger {
 impl Drop for Trigger {
     fn drop(&mut self) {
         self.lock.raw_unlock();
+    }
+}
+
+#[derive(Default)]
+struct WsMessageBus {
+    listeners: RefCell<Vec<(WsListenerId, WsCallback)>>,
+}
+
+pub struct WsListenerToken {
+    id: WsListenerId,
+    bus: Weak<WsMessageBus>,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+struct WsListenerId(usize);
+
+impl WsMessageBus {
+    pub fn register(self: Rc<Self>, callback: WsCallback) -> WsListenerToken {
+        let id = WsListenerId::new();
+        debug!("register");
+        self.listeners.borrow_mut().push((id, callback));
+        WsListenerToken {
+            id,
+            bus: Rc::downgrade(&self),
+        }
+    }
+
+    fn deregister(&self, id: WsListenerId) {
+        let mut listeners = self.listeners.borrow_mut();
+        if let Some(index) = listeners.iter().position(|(jd, _)| id == *jd) {
+            listeners.swap_remove(index);
+        }
+    }
+
+    pub fn broadcast(&self, msg: WsResult) {
+        debug!("broadcast");
+        let msg = Rc::new(msg);
+        let listeners = {
+            let listeners = self.listeners.borrow().clone();
+            listeners
+        };
+        for (_, listener) in listeners {
+            listener.emit(msg.clone())
+        }
+        debug!("broadcast done");
+    }
+}
+
+impl WsListenerId {
+    fn new() -> Self {
+        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+        WsListenerId(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl Drop for WsListenerToken {
+    fn drop(&mut self) {
+        if let Some(bus) = self.bus.upgrade() {
+            bus.deregister(self.id)
+        }
     }
 }

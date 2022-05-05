@@ -12,8 +12,13 @@ async fn main() {
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
-    axum::Server::bind(&"127.0.0.1:3000".parse().unwrap())
-        .serve(make_app().await)
-        .await
-        .unwrap();
+    axum::Server::bind(
+        &std::env::var("SERVER_ADDR")
+            .unwrap_or_else(|_| "127.0.0.1:3000".into())
+            .parse()
+            .unwrap(),
+    )
+    .serve(make_app().await)
+    .await
+    .unwrap();
 }

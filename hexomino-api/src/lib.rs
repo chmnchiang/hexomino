@@ -2,14 +2,13 @@ mod auth;
 mod room;
 mod user;
 mod ws;
+mod game;
 
 pub use auth::*;
 pub use room::*;
 pub use user::*;
 pub use ws::*;
-
-//#[cfg(feature = "axum")]
-//pub use crate::axum::*;
+pub use game::*;
 
 macro_rules! derive_api_data {
     () => {};

@@ -1,13 +1,13 @@
-use api::{CreateRoomApi, ListRoomsApi};
+use api::{CreateRoomApi, ListRoomsApi, JoinRoomApi};
 use gloo::timers::callback::Interval;
 use itertools::Itertools;
 use log::debug;
 use wasm_bindgen_futures::spawn_local;
-use yew::{html, Callback, Component, Context, Html};
+use yew::{html, html::Scope, Component, Context, Html};
 
-use crate::util::ResultExt;
+use crate::{context::ScopeExt, util::ResultExt};
 
-use super::MainContext;
+
 
 pub struct RoomsView {
     rooms: Vec<api::Room>,
@@ -15,7 +15,8 @@ pub struct RoomsView {
 }
 
 pub enum RoomsMsg {
-    UpdateRooms(Vec<api::Room>),
+    OnReceiveRooms(Vec<api::Room>),
+    UpdateRooms,
 }
 
 const REFRESH_INTERVAL: u32 = 5_000;
@@ -25,19 +26,10 @@ impl Component for RoomsView {
     type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (context, _) = ctx.link().context::<MainContext>(Callback::noop()).unwrap();
-        let callback = ctx.link().callback(RoomsMsg::UpdateRooms);
+        let link = ctx.link().clone();
+        Self::update_rooms(link.clone());
         let refresh_rooms_timer = Interval::new(REFRESH_INTERVAL, move || {
-            let context = context.clone();
-            let callback = callback.clone();
-            spawn_local(async move {
-                let _resp = context
-                    .connection
-                    .get_api::<ListRoomsApi>("/api/rooms")
-                    .await
-                    .log_err()
-                    .map_cb(callback);
-            });
+            Self::update_rooms(link.clone());
         });
         Self {
             rooms: vec![],
@@ -45,12 +37,17 @@ impl Component for RoomsView {
         }
     }
 
-    fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         use RoomsMsg::*;
         match msg {
-            UpdateRooms(rooms) => {
+            OnReceiveRooms(rooms) => {
+                log::debug!("receive rooms");
                 self.rooms = rooms;
                 true
+            }
+            UpdateRooms => {
+                Self::update_rooms(ctx.link().clone());
+                false
             }
         }
     }
@@ -60,26 +57,44 @@ impl Component for RoomsView {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let (context, _) = ctx.link().context::<MainContext>(Callback::noop()).unwrap();
-        fn room_to_html(room: &api::Room) -> Html {
-            let id = format!("{}", room.id.0);
-            let users = room.users.iter().cloned().map(|user| user.name).join(", ");
-            html! {
-                <tr>
-                    <td>{id}</td>
-                    <td>{users}</td>
-                </tr>
+        let link = ctx.link().clone();
+        let room_to_html = {
+            let link = link.clone();
+            move |room: &api::Room| -> Html {
+                let link = link.clone();
+                let room_id = room.id;
+                let users = room.users.iter().cloned().map(|user| user.name).join(", ");
+                let join_callback = move |_| {
+                    let link = link.clone();
+                    spawn_local(async move {
+                        let resp = link.connection().post_api::<JoinRoomApi>("/api/room/join", room_id)
+                            .await;
+                        let Ok(resp) = resp.log_err() else { return };
+                        let Ok(()) = resp.log_err() else { return };
+                        link.send_message(RoomsMsg::UpdateRooms);
+                        debug!("join room = {}", room_id);
+                    })
+                };
+                let id_str = format!("{}", room_id.0);
+                html! {
+                    <tr>
+                        <td style="vertical-align: middle">{id_str}</td>
+                        <td style="vertical-align: middle">{users}</td>
+                        <td><button class="button is-success" onclick={join_callback}>{"Join"}</button></td>
+                    </tr>
+                }
             }
-        }
+        };
         let onclick = move |_| {
-            let context = context.clone();
+            let link = link.clone();
+            let connection = link.connection();
             spawn_local(async move {
-                let resp = context
-                    .connection
+                let resp = connection
                     .post_api::<CreateRoomApi>("/api/room/create", ())
                     .await;
                 let Ok(resp) = resp.log_err().ignore_err() else { return };
                 let Ok(room_id) = resp.log_err().ignore_err() else { return };
+                link.send_message(RoomsMsg::UpdateRooms);
                 debug!("room_id = {room_id}")
             });
         };
@@ -90,6 +105,7 @@ impl Component for RoomsView {
                         <tr>
                             <th>{"Room ID"}</th>
                             <th>{"Users"}</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody> {
@@ -99,5 +115,19 @@ impl Component for RoomsView {
                 <button class="button is-success" {onclick}>{"Create room"}</button>
             </>
         }
+    }
+}
+
+impl RoomsView {
+    fn update_rooms(link: Scope<Self>) {
+        let connection = link.connection();
+        let callback = link.callback(RoomsMsg::OnReceiveRooms);
+        spawn_local(async move {
+            let _resp = connection
+                .get_api::<ListRoomsApi>("/api/rooms")
+                .await
+                .log_err()
+                .map_cb(callback);
+        });
     }
 }

@@ -1,0 +1,55 @@
+{
+  "db": "PostgreSQL",
+  "806b90f8e13b13b0def7177f19ee71c204e24078d6613c07fd85135d4214eb3b": {
+    "describe": {
+      "columns": [
+        {
+          "name": "name",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            SELECT name FROM Users\n            WHERE id = $1\n            "
+  },
+  "c88718a0c0d8c89e585e2d7a99141d20dd0583bb2fe9705e73a782576b225074": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "password",
+          "ordinal": 2,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        SELECT id, name, password FROM Users\n        WHERE name = $1\n        "
+  }
+}

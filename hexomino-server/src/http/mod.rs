@@ -10,7 +10,7 @@ use crate::result::{ApiError, ApiResult, CommonError, Error};
 
 use self::{
     auth::login_handler,
-    room::{create_room_handler, join_room_handler, list_rooms_handler},
+    room::{create_room_handler, join_room_handler, list_rooms_handler, get_room_handler},
 };
 
 mod auth;
@@ -20,8 +20,9 @@ pub fn routes() -> Router {
     Router::new()
         .route("/login", post(login_handler))
         .route("/rooms", get(list_rooms_handler))
+        .route("/room", post(get_room_handler))
         .route("/room/create", post(create_room_handler))
-        .route("/room/join/:id", post(join_room_handler))
+        .route("/room/join", post(join_room_handler))
 }
 
 pub type JsonResponse<T> = std::result::Result<Json<T>, CommonError>;

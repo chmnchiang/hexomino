@@ -1,0 +1,5 @@
+dist/
+target/
+.git
+.dockerignore
+.gitignore

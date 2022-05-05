@@ -145,9 +145,8 @@ impl<T, E> ResultExt<T, E> for Result<T, E> {
     where
         E: Display,
     {
-        match &self {
-            Err(err) => error!("{}", err),
-            _ => (),
+        if let Err(err) = &self {
+            error!("{}", err);
         }
         self
     }

@@ -1,3 +1,5 @@
+
+
 use api::Never;
 
 pub trait ResultNeverExt<T> {

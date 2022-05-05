@@ -2,9 +2,9 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlInputElement;
 use yew::{html, Callback, Component, Context, Html, NodeRef, Properties};
 
-use crate::context::{ConnectionError};
+use crate::context::{ScopeExt, connection::ConnectionError};
 
-use super::MainContext;
+
 
 #[derive(Default)]
 pub struct LoginView {
@@ -38,15 +38,11 @@ impl Component for LoginView {
                 let username = self.username.cast::<HtmlInputElement>().unwrap().value();
                 let password = self.password.cast::<HtmlInputElement>().unwrap().value();
 
-                let (context, _): (MainContext, _) = ctx
-                    .link()
-                    .context(Callback::noop())
-                    .expect("get context failed");
-
+                let connection = ctx.link().connection();
                 let callback_ok = ctx.props().callback.clone();
                 let callback_err = ctx.link().callback(LoginFailed);
                 let fut = async move {
-                    match context.connection.login(username, password).await {
+                    match connection.login(username, password).await {
                         Ok(_) => callback_ok.emit(()),
                         Err(err) => callback_err.emit(err),
                     }
@@ -66,7 +62,7 @@ impl Component for LoginView {
         let submit = ctx.link().callback(|_| LoginMsg::Login);
 
         html! {
-            <session class="hero is-primary is-fullheight">
+            <section class="hero is-primary is-fullheight">
                 <div class="hero-body">
                     <div class="container">
                         <div class="columns is-centered">
@@ -94,7 +90,7 @@ impl Component for LoginView {
                         </div>
                     </div>
                 </div>
-            </session>
+            </section>
         }
     }
 }

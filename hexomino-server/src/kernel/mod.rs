@@ -1,9 +1,8 @@
 use std::time::Duration;
 
-
 use api::{
-    Never, Room, RoomError, RoomId, StartWsError, StartWsRequest, UserId,
-    WsRequest, StartWsApi, Api,
+    Api, JoinedRoom, Never, Room, RoomAction, RoomError, RoomId, StartWsApi, StartWsError,
+    StartWsRequest, UserId, WsRequest,
 };
 use axum::extract::ws::{Message, WebSocket};
 use once_cell::sync::OnceCell;
@@ -12,7 +11,8 @@ use tracing::{debug, error, trace};
 
 use crate::{
     auth::{authorize_jwt, Claims},
-    DbPool, result::ApiResult,
+    result::ApiResult,
+    DbPool,
 };
 
 use self::{
@@ -77,18 +77,20 @@ impl Kernel {
         self.user_pool.get(user_id)
     }
 
-    pub async fn get_room(&self, _user: User, room_id: RoomId) -> ApiResult<Room, RoomError> {
-        Ok(self.room_manager.get(room_id)?)
+    pub async fn get_room(&self, _user: User, room_id: RoomId) -> ApiResult<JoinedRoom, RoomError> {
+        self.room_manager.get(room_id)
     }
-
     pub async fn list_rooms(&self) -> ApiResult<Vec<Room>, Never> {
         Ok(self.room_manager.list_rooms())
     }
     pub async fn join_room(&self, user: User, room_id: RoomId) -> ApiResult<(), RoomError> {
-        self.room_manager.join_room(user.clone(), room_id)
+        self.room_manager.join_room(user, room_id)
     }
     pub async fn create_room(&self, user: User) -> ApiResult<RoomId, RoomError> {
-        self.room_manager.create_room(user.clone())
+        self.room_manager.create_room(user)
+    }
+    pub async fn room_action(&self, user: User, action: RoomAction) -> ApiResult<(), RoomError> {
+        todo!();
     }
 }
 
@@ -145,17 +147,15 @@ async fn authorize_ws(ws: &mut WebSocket) -> Result<Claims, StartWsError> {
     use StartWsError::*;
     let recv_future = timeout(WS_AUTH_TIMEOUT, ws.recv());
     let result = recv_future.await.map_err(|_| Timeout)?;
-    let result = result.ok_or_else(|| InitialHandshakeFailed)?;
+    let result = result.ok_or(InitialHandshakeFailed)?;
     let result = result.map_err(|e| {
         error!("ws receive error = {}", e);
         InternalError
     })?;
     if let Message::Binary(token) = result {
-        let request = bincode::deserialize::<StartWsRequest>(&token)
-            .map_err(|_| InitialHandshakeFailed)?;
-        Ok(authorize_jwt(&request.token)
-            .await
-            .ok_or_else(|| WsAuthError)?)
+        let request =
+            bincode::deserialize::<StartWsRequest>(&token).map_err(|_| InitialHandshakeFailed)?;
+        Ok(authorize_jwt(&request.token).await.ok_or(WsAuthError)?)
     } else {
         Err(InitialHandshakeFailed)?
     }

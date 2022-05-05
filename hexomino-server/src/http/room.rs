@@ -1,4 +1,4 @@
-use api::{Api, CreateRoomApi, GetRoomApi, JoinRoomApi, JoinRoomRequest, ListRoomsApi};
+use api::{Api, CreateRoomApi, GetRoomApi, JoinRoomApi, JoinRoomRequest, ListRoomsApi, RoomActionApi};
 use axum::Json;
 
 use crate::kernel::{user::User, Kernel};
@@ -25,4 +25,11 @@ pub async fn join_room_handler(
     Json(room_id): Json<JoinRoomRequest>,
 ) -> JsonResponse<<JoinRoomApi as Api>::Response> {
     into_json_response(Kernel::get().join_room(user, room_id).await)
+}
+
+pub async fn room_action_handler(
+    user: User,
+    Json(action): Json<<RoomActionApi as Api>::Request>,
+) -> JsonResponse<<JoinRoomApi as Api>::Response> {
+    into_json_response(Kernel::get().room_action(user, action).await)
 }

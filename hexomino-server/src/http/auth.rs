@@ -30,6 +30,6 @@ pub async fn login_handler(
         username: user.name,
         token: create_jwt_token(user.id)
             .await
-            .ok_or_else(|| CommonError::Unauthorized)?,
+            .ok_or(CommonError::Unauthorized)?,
     }))
 }

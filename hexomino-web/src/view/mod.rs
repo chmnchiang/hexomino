@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use api::{WsResult, RoomId};
+use api::{WsResult, RoomId, GameId};
 use log::{debug, error};
 use wasm_bindgen_futures::spawn_local;
 use yew::{
@@ -20,7 +20,7 @@ use crate::{
     game::GameMode,
 };
 
-use self::{login_view::LoginView, rooms::RoomsView, ws_reconnect::WsReconnectModal, room::RoomView};
+use self::{login_view::LoginView, rooms::RoomsView, ws_reconnect::WsReconnectModal, room::RoomView, game::GameView};
 
 mod game;
 mod login_view;
@@ -66,6 +66,8 @@ enum Route {
     Rooms,
     #[at("/room/:room_id")]
     Room { room_id: RoomId },
+    #[at("/game/:game_id")]
+    Game { game_id: GameId },
 }
 
 pub enum MainMsg {
@@ -169,6 +171,7 @@ fn switch(link: &MainLink) -> impl Fn(&Route) -> Html + 'static {
             Login => switch_login(&link),
             Rooms => ensure_login(&link, switch_rooms),
             Room { room_id } => ensure_login(&link, switch_room(*room_id)),
+            Game { game_id } => ensure_login(&link, switch_game(*game_id)),
         }
     }
 }
@@ -217,6 +220,13 @@ fn switch_room(room_id: RoomId) -> impl Fn(&MainLink) -> Html {
     })
 }
 
+fn switch_game(game_id: GameId) -> impl Fn(&MainLink) -> Html {
+    debug!("switch game");
+    move |_| with_default_wrapper(html! {
+        <GameView/>
+    })
+}
+
 
 impl MainView {
     fn logout(&mut self, ctx: &Context<Self>) {
@@ -254,6 +264,9 @@ impl MainView {
         match msg {
             MoveToRoom(room_id) => {
                 ctx.link().history().unwrap().push(Route::Room { room_id: *room_id });
+            }
+            GameStart(game_info) => {
+                ctx.link().history().unwrap().push(Route::Game { game_id: game_info.game_id });
             }
             _ => (),
         }

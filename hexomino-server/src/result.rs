@@ -1,18 +1,22 @@
-use api::{RoomError, Never};
+use api::{RoomError, Never, GameError};
 
 
 use serde::Serialize;
 
 pub type ApiResult<T, E> = std::result::Result<T, Error<E>>;
 
+#[derive(thiserror::Error, Debug)]
 pub enum Error<E: ApiError> {
+    #[error("{0}")]
     Api(E),
+    #[error("{0}")]
     Common(CommonError),
 }
 
 pub trait ApiError: Serialize {}
 impl ApiError for Never {}
 impl ApiError for RoomError {}
+impl ApiError for GameError {}
 
 #[derive(thiserror::Error, Debug)]
 pub enum CommonError {

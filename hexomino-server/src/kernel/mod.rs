@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use api::{
-    Api, JoinedRoom, Never, Room, RoomAction, RoomError, RoomId, StartWsApi, StartWsError,
-    StartWsRequest, UserId, WsRequest,
+    Api, GameAction, GameError, JoinedRoom, Never, Room, RoomAction, RoomError, RoomId, StartWsApi,
+    StartWsError, StartWsRequest, UserId, WsRequest,
 };
 use axum::extract::ws::{Message, WebSocket};
 use once_cell::sync::OnceCell;
@@ -17,9 +17,10 @@ use crate::{
 
 use self::{
     room::RoomManager,
-    user::{User, UserPool},
+    user::{User, UserPool, UserStatus},
 };
 
+pub mod game;
 pub mod room;
 pub mod user;
 
@@ -78,7 +79,7 @@ impl Kernel {
     }
 
     pub async fn get_room(&self, _user: User, room_id: RoomId) -> ApiResult<JoinedRoom, RoomError> {
-        self.room_manager.get(room_id)
+        self.room_manager.get_joined_room(room_id)
     }
     pub async fn list_rooms(&self) -> ApiResult<Vec<Room>, Never> {
         Ok(self.room_manager.list_rooms())
@@ -90,7 +91,22 @@ impl Kernel {
         self.room_manager.create_room(user)
     }
     pub async fn room_action(&self, user: User, action: RoomAction) -> ApiResult<(), RoomError> {
-        todo!();
+        let room_id = {
+            let user_state = user.state().read();
+            let UserStatus::InRoom(room_id) = user_state.status else {
+                return Err(RoomError::NotInRoom.into())
+            };
+            room_id
+        };
+        let room = self.room_manager.get(room_id)?;
+        room.room_action(user.id(), action)
+    }
+    pub async fn game_action(&self, user: User, action: GameAction) -> ApiResult<(), GameError> {
+        if let UserStatus::InGame(game) = &user.state().read().status {
+            let result = game.user_action(user.id(), action);
+            tracing::debug!("result = {result:?}");
+        }
+        Ok(())
     }
 }
 

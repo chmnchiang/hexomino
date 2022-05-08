@@ -32,9 +32,9 @@ impl PartialEq for GameState {
 }
 
 impl GameState {
-    fn new(player_1_name: String, player_2_name: String) -> Self {
+    pub fn new(player_1_name: String, player_2_name: String) -> Self {
         Self {
-            core_game_state: CoreGameState::new_random_place(),
+            core_game_state: CoreGameState::new(),
             me: Player::First,
             player_1_name,
             player_2_name,

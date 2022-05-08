@@ -10,11 +10,12 @@ use crate::result::{ApiError, ApiResult, CommonError, Error};
 
 use self::{
     auth::login_handler,
-    room::{create_room_handler, join_room_handler, list_rooms_handler, get_room_handler},
+    room::{create_room_handler, join_room_handler, list_rooms_handler, get_room_handler, room_action_handler}, game::game_action_handler,
 };
 
 mod auth;
 mod room;
+mod game;
 
 pub fn routes() -> Router {
     Router::new()
@@ -23,6 +24,8 @@ pub fn routes() -> Router {
         .route("/room", post(get_room_handler))
         .route("/room/create", post(create_room_handler))
         .route("/room/join", post(join_room_handler))
+        .route("/room/action", post(room_action_handler))
+        .route("/game/action", post(game_action_handler))
 }
 
 pub type JsonResponse<T> = std::result::Result<Json<T>, CommonError>;

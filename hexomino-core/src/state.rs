@@ -13,10 +13,10 @@ pub enum Player {
 }
 
 impl Player {
-    fn id(self) -> usize {
+    pub fn id(self) -> usize {
         self as usize
     }
-    fn other(self) -> Player {
+    pub fn other(self) -> Player {
         use Player::*;
         match self {
             First => Second,

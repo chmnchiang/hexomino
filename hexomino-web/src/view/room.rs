@@ -1,14 +1,17 @@
 use std::rc::Rc;
 
-use api::{JoinedRoom, RoomId, WsResponse, WsResult};
+use api::{JoinedRoom, RoomActionApi, RoomActionRequest, RoomId, WsResponse, WsResult};
 use wasm_bindgen_futures::spawn_local;
-use yew::{html, Component, Context, Html, Properties};
+use yew::{html, Component, Context, Html, Properties, classes};
 
-use crate::{context::{ScopeExt, connection::ws::WsListenerToken}, util::ResultExt};
+use crate::{
+    context::{connection::ws::WsListenerToken, ScopeExt},
+    util::ResultExt,
+};
 
 pub struct RoomView {
     room: JoinedRoom,
-    _ws_listener_token: WsListenerToken
+    _ws_listener_token: WsListenerToken,
 }
 
 #[derive(Properties, PartialEq)]
@@ -28,13 +31,14 @@ impl Component for RoomView {
         let room_id = ctx.props().room_id;
         let connection = ctx.link().connection();
         let callback = ctx.link().callback(RoomMsg::UpdateRoom);
-        let ws_listener_token = connection.register_ws_callback(ctx.link().batch_callback(|resp: Rc<WsResult>| {
-            log::debug!("{:?}", resp);
-            match &*resp {
-                WsResponse::RoomUpdate(room) => Some(RoomMsg::UpdateRoom(room.clone())),
-                _ => None,
-            }
-        }));
+        let ws_listener_token =
+            connection.register_ws_callback(ctx.link().batch_callback(|resp: Rc<WsResult>| {
+                log::debug!("{:?}", resp);
+                match &*resp {
+                    WsResponse::RoomUpdate(room) => Some(RoomMsg::UpdateRoom(room.clone())),
+                    _ => None,
+                }
+            }));
 
         spawn_local(async move {
             if let Ok(result) = connection.post_api::<api::GetRoomApi>("/api/room", room_id).await
@@ -61,26 +65,47 @@ impl Component for RoomView {
         }
     }
 
-    fn view(&self, _ctx: &Context<Self>) -> Html {
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let on_ready_click = {
+            let connection = ctx.link().connection();
+            move |_| {
+                let connection = connection.clone();
+                spawn_local(async move {
+                    let _ = connection
+                        .post_api::<RoomActionApi>("/api/room/action", RoomActionRequest::Ready)
+                        .await
+                        .log_err();
+                });
+            }
+        };
         html! {
-            <div class="columns is-centered">
-                <div class="column is-one-quarter">
-                    {self.user_html_card(0)}
+            <>
+                <div class="columns is-centered">
+                    <div class="column is-one-quarter">
+                        {self.user_html_card(0)}
+                    </div>
+                    <div class="column is-one-quarter">
+                        {self.user_html_card(1)}
+                    </div>
                 </div>
-                <div class="column is-one-quarter">
-                    {self.user_html_card(1)}
+                <div class="columns is-centered">
+                    <div class="column is-half">
+                        <button class="button is-medium is-fullwidth is-success" onclick={on_ready_click}>{"Ready"}</button>
+                    </div>
                 </div>
-            </div>
+            </>
         }
     }
 }
 
 impl RoomView {
     fn user_html_card(&self, index: usize) -> Html {
-        let inner = self
+        let user = self
             .room
             .users
-            .get(index)
+            .get(index);
+        let card_color = user.and_then(|user| user.is_ready.then(|| "is-success"));
+        let inner = user
             .map(|user| {
                 html! {
                     <p>{user.user.name.clone()}</p>
@@ -88,7 +113,7 @@ impl RoomView {
             })
             .unwrap_or_else(|| html!());
         html! {
-            <div class="card">
+            <div class={classes!("card", card_color)}>
                 <div class="card-content" style="min-height: 200px">
                 { inner }
                 </div>

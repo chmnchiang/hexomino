@@ -34,15 +34,10 @@ use crate::{
     DbPool,
 };
 
-#[derive(Clone, Debug)]
-pub struct User(Arc<UserInner>);
+use super::game::Game;
 
-impl Deref for User {
-    type Target = Arc<UserInner>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+#[derive(Clone, Debug, derive_more::Deref)]
+pub struct User(Arc<UserInner>);
 
 impl Eq for User {}
 impl PartialEq for User {
@@ -79,7 +74,7 @@ pub struct UserState {
 pub enum UserStatus {
     Idle,
     InRoom(RoomId),
-    InGame,
+    InGame(Game),
 }
 
 type WsStream = TakeUntilIf<SplitStream<WebSocket>, Tripwire>;
@@ -169,9 +164,14 @@ impl UserInner {
     }
 
     pub fn spawn_send(&self, resp: WsResult) {
-        spawn(self.connection.send(Message::Binary(
-            bincode::serialize(&resp).unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
-        )).map(|_| ()));
+        spawn(
+            self.connection
+                .send(Message::Binary(
+                    bincode::serialize(&resp)
+                        .unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
+                ))
+                .map(|_| ()),
+        );
     }
 
     pub fn send_initial_position(&self) {
@@ -303,6 +303,9 @@ impl<B: Send> FromRequest<B> for User {
         let claims = authorize_jwt(bearer.token())
             .await
             .ok_or(CommonError::Unauthorized)?;
-        Kernel::get().get_user(UserId(claims.id)).await.ok_or(CommonError::Unauthorized)
+        Kernel::get()
+            .get_user(UserId(claims.id))
+            .await
+            .ok_or(CommonError::Unauthorized)
     }
 }

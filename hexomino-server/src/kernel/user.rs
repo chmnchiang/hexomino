@@ -1,6 +1,5 @@
 use std::{
     future::Future,
-    ops::Deref,
     sync::{Arc, Weak},
 };
 
@@ -34,7 +33,7 @@ use crate::{
     DbPool,
 };
 
-use super::game::Game;
+use super::game::GameHandle;
 
 #[derive(Clone, Debug, derive_more::Deref)]
 pub struct User(Arc<UserInner>);
@@ -74,7 +73,7 @@ pub struct UserState {
 pub enum UserStatus {
     Idle,
     InRoom(RoomId),
-    InGame(Game),
+    InGame(GameHandle),
 }
 
 type WsStream = TakeUntilIf<SplitStream<WebSocket>, Tripwire>;
@@ -157,13 +156,15 @@ impl UserInner {
         self.connection.drop();
     }
 
+    #[allow(dead_code)]
     pub fn send(&self, resp: WsResult) -> impl Future<Output = anyhow::Result<()>> {
         self.connection.send(Message::Binary(
             bincode::serialize(&resp).unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
         ))
     }
 
-    pub fn spawn_send(&self, resp: WsResult) {
+    pub fn do_send(&self, resp: WsResult) {
+        tracing::debug!("resp = {resp:?}");
         spawn(
             self.connection
                 .send(Message::Binary(
@@ -177,7 +178,7 @@ impl UserInner {
     pub fn send_initial_position(&self) {
         use UserStatus::*;
         match self.state().read().status {
-            InRoom(room_id) => self.spawn_send(WsResult::MoveToRoom(room_id)),
+            InRoom(room_id) => self.do_send(WsResult::MoveToRoom(room_id)),
             _ => (),
         }
     }

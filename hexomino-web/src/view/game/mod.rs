@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use api::{GameAction, GameActionApi, GameActionRequest, WsResult, WsResponse, GameEvent};
+use api::{GameAction, GameActionApi, WsResult, WsResponse, GameEvent};
 use hexomino_core::{Action, GamePhase, Hexo};
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Component, Context, Html, Properties};
@@ -8,7 +8,7 @@ use yew::{html, Component, Context, Html, Properties};
 use self::{end_view::EndView, pick_view::PickView, place_view::PlaceView};
 use crate::{
     context::{ScopeExt, connection::ws::WsListenerToken},
-    game::{new_game, CoreGameState, GameBundle, GameMode, GameState, SharedGameState}, util::ResultExt,
+    game::{CoreGameState, GameState, SharedGameState}, util::ResultExt,
 };
 
 mod board_canvas;

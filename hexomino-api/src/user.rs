@@ -9,7 +9,7 @@ pub struct User {
     pub name: String,
 }
 
-#[derive(Copy, PartialEq, Eq, Hash, derive_more::Display)]
+#[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::Display)]
 #[display(fmt = "{}",  _0)]
 pub struct UserId(pub Uuid);
 

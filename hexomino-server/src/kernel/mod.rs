@@ -16,10 +16,11 @@ use crate::{
 };
 
 use self::{
-    room::RoomManager,
+    room::RoomManagerHandle,
     user::{User, UserPool, UserStatus},
 };
 
+pub mod actor;
 pub mod game;
 pub mod room;
 pub mod user;
@@ -32,7 +33,7 @@ enum KernelMsg {
 
 pub struct Kernel {
     user_pool: UserPool,
-    room_manager: RoomManager,
+    room_manager: RoomManagerHandle,
 }
 
 async fn send_start_ws_error(mut ws: WebSocket, err: StartWsError) {
@@ -50,7 +51,7 @@ impl Kernel {
     pub fn init(db: DbPool) {
         KERNEL
             .set(Self {
-                room_manager: RoomManager::new(),
+                room_manager: RoomManagerHandle::new(),
                 user_pool: UserPool::new(db),
             })
             .map_err(|_| ())
@@ -78,17 +79,17 @@ impl Kernel {
         self.user_pool.get(user_id)
     }
 
-    pub async fn get_room(&self, _user: User, room_id: RoomId) -> ApiResult<JoinedRoom, RoomError> {
-        self.room_manager.get_joined_room(room_id)
+    pub async fn get_room(&self, user: User, room_id: RoomId) -> ApiResult<JoinedRoom, RoomError> {
+        self.room_manager.get_joined_room(user, room_id).await
     }
     pub async fn list_rooms(&self) -> ApiResult<Vec<Room>, Never> {
         Ok(self.room_manager.list_rooms())
     }
     pub async fn join_room(&self, user: User, room_id: RoomId) -> ApiResult<(), RoomError> {
-        self.room_manager.join_room(user, room_id)
+        self.room_manager.join_room(user, room_id).await
     }
     pub async fn create_room(&self, user: User) -> ApiResult<RoomId, RoomError> {
-        self.room_manager.create_room(user)
+        self.room_manager.create_room(user).await
     }
     pub async fn room_action(&self, user: User, action: RoomAction) -> ApiResult<(), RoomError> {
         let room_id = {
@@ -98,15 +99,18 @@ impl Kernel {
             };
             room_id
         };
-        let room = self.room_manager.get(room_id)?;
-        room.room_action(user.id(), action)
+        let res = self.room_manager
+            .user_room_action(user, room_id, action)
+            .await;
+        tracing::debug!("ok");
+        res
     }
     pub async fn game_action(&self, user: User, action: GameAction) -> ApiResult<(), GameError> {
         if let UserStatus::InGame(game) = &user.state().read().status {
-            let result = game.user_action(user.id(), action);
-            tracing::debug!("result = {result:?}");
+            game.send_user_action(user.id(), action).await
+        } else {
+            Err(GameError::NotInGame)?
         }
-        Ok(())
     }
 }
 

@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{derive_api_data, Api, User, UserId};
+use crate::{derive_api_data, Api, User};
 
 derive_api_data! {
     pub struct Room {
@@ -23,7 +23,7 @@ derive_api_data! {
 
     pub enum RoomAction {
         Ready,
-        Unready,
+        UndoReady,
     }
 }
 

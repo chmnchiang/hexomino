@@ -1,15 +1,11 @@
 use std::rc::Rc;
 
-use api::{WsResult, RoomId, GameId};
+use api::{GameId, RoomId, WsResult};
 use log::{debug, error};
 use wasm_bindgen_futures::spawn_local;
 use yew::{
     function_component, html, html::Scope, Callback, Component, Context, ContextProvider, Html,
     Properties,
-};
-use yew_router::{
-    components::Redirect, history::History, prelude::RouterScopeExt, BrowserRouter, Routable,
-    Switch,
 };
 
 use crate::{
@@ -20,13 +16,16 @@ use crate::{
     game::GameMode,
 };
 
-use self::{login_view::LoginView, rooms::RoomsView, ws_reconnect::WsReconnectModal, room::RoomView, game::GameView};
+use self::{
+    game::GameView, login_view::LoginView, room::RoomView, rooms::RoomsView,
+    ws_reconnect::WsReconnectModal,
+};
 
 mod game;
 mod login_view;
 mod menu;
-mod rooms;
 mod room;
+mod rooms;
 mod shared_link;
 mod util;
 mod ws_reconnect;
@@ -34,11 +33,9 @@ mod ws_reconnect;
 #[function_component(App)]
 pub fn app() -> Html {
     html! {
-        <BrowserRouter>
-            <ContextProvider<MainContext> context={MainContext::default()}>
-                <MainView/>
-            </ContextProvider<MainContext>>
-        </BrowserRouter>
+        <ContextProvider<MainContext> context={MainContext::default()}>
+            <MainView/>
+        </ContextProvider<MainContext>>
     }
 }
 
@@ -48,6 +45,7 @@ pub struct MainProps;
 pub struct MainView {
     context: MainContext,
     show_reconnect: bool,
+    route: Route,
     _ws_listener_token: WsListenerToken,
 }
 
@@ -58,15 +56,11 @@ pub enum ReconnectStatus {
     None,
 }
 
-#[derive(Clone, Routable, PartialEq)]
-enum Route {
-    #[at("/")]
+#[derive(Clone, PartialEq)]
+pub enum Route {
     Login,
-    #[at("/rooms")]
     Rooms,
-    #[at("/room/:room_id")]
     Room { room_id: RoomId },
-    #[at("/game/:game_id")]
     Game { game_id: GameId },
 }
 
@@ -75,6 +69,7 @@ pub enum MainMsg {
     OnWsConnected,
     OnConnectionError(ConnectionError),
     OnWsRecv(Rc<WsResult>),
+    OnRouteChange(Route),
     Logout,
     ReconnectWs,
 }
@@ -90,12 +85,14 @@ impl Component for MainView {
 
     fn create(ctx: &Context<Self>) -> Self {
         let connection_error_callback = ctx.link().callback(MainMsg::OnConnectionError);
+        let main_callback = ctx.link().callback(|m| m);
         let (context, _) = ctx.link().context::<MainContext>(Callback::noop()).unwrap();
-        context.init_with(connection_error_callback);
+        context.init_with(connection_error_callback, main_callback);
         let connection = context.connection();
         let status = connection.status();
         Self {
             context,
+            route: Route::Login,
             show_reconnect: status == ConnectionStatus::WsNotConnected,
             _ws_listener_token: connection
                 .register_ws_callback(ctx.link().callback(MainMsg::OnWsRecv)),
@@ -111,7 +108,7 @@ impl Component for MainView {
                 false
             }
             OnWsConnected => {
-                ctx.link().history().unwrap().push(Route::Rooms);
+                ctx.link().main().go(Route::Rooms);
                 true
             }
             OnWsRecv(resp) => {
@@ -128,6 +125,10 @@ impl Component for MainView {
                     }
                     _ => (),
                 }
+                true
+            }
+            OnRouteChange(route) => {
+                self.route = route;
                 true
             }
             Logout => {
@@ -152,7 +153,7 @@ impl Component for MainView {
         let modal_reconnect_cb = ctx.link().callback(|_| MainMsg::ReconnectWs);
         html! {
             <main>
-                <Switch<Route> render={Switch::render(switch(ctx.link()))}/>
+                <> { self.route_view(ctx) } </>
                 if self.show_reconnect {
                     <WsReconnectModal logout_cb={modal_logout_cb} reconnect_cb={modal_reconnect_cb}/>
                 }
@@ -161,78 +162,63 @@ impl Component for MainView {
     }
 }
 
-type MainLink = Scope<MainView>;
+impl MainView {
+    fn route_view(&self, ctx: &Context<Self>) -> Html {
+        if let Route::Login = self.route {
+            return self.login_view(ctx);
+        }
+        let status = ctx.link().connection().status();
+        if status != ConnectionStatus::Connected {
+            ctx.link().main().go(Route::Login);
+            return html! {};
+        }
+        let inner = match self.route {
+            Route::Login => unreachable!(),
+            Route::Rooms => self.rooms_view(),
+            Route::Room { room_id } => self.room_view(room_id),
+            Route::Game { game_id } => self.game_view(game_id),
+        };
 
-fn switch(link: &MainLink) -> impl Fn(&Route) -> Html + 'static {
-    let link = link.clone();
-    move |route| {
-        use Route::*;
-        match route {
-            Login => switch_login(&link),
-            Rooms => ensure_login(&link, switch_rooms),
-            Room { room_id } => ensure_login(&link, switch_room(*room_id)),
-            Game { game_id } => ensure_login(&link, switch_game(*game_id)),
+        html! {
+            <section class="section">
+                <div class="container">
+                { inner }
+                </div>
+            </section>
+        }
+    }
+
+    fn login_view(&self, ctx: &Context<Self>) -> Html {
+        let login_callback = ctx.link().callback_once(|()| MainMsg::OnLoginOk);
+        html! {
+            <LoginView callback={login_callback}/>
+        }
+    }
+
+    fn rooms_view(&self) -> Html {
+        html! {
+            <RoomsView/>
+        }
+    }
+
+    fn room_view(&self, room_id: RoomId) -> Html {
+        html! {
+            <RoomView {room_id}/>
+        }
+    }
+
+    fn game_view(&self, _game_id: GameId) -> Html {
+        html! {
+            <GameView/>
         }
     }
 }
-
-fn switch_login(link: &MainLink) -> Html {
-    //if link.connection().status() == ConnectionStatus::Connected {
-    //return html! {
-    //<Redirect<Route> to={Route::Rooms}/>
-    //}
-    //}
-    let login_callback = link.callback_once(|()| MainMsg::OnLoginOk);
-    html! {
-        <LoginView callback={login_callback}/>
-    }
-}
-
-fn ensure_login(link: &MainLink, then: impl Fn(&MainLink) -> Html) -> Html {
-    let status = link.connection().status();
-    if status != ConnectionStatus::Connected {
-        return html! {
-            <Redirect<Route> to={Route::Login}/>
-        };
-    }
-    then(link)
-}
-
-fn with_default_wrapper(html: Html) -> Html {
-    html! {
-        <section class="section">
-            <div class="container">
-                { html }
-            </div>
-        </section>
-    }
-}
-
-fn switch_rooms(_link: &MainLink) -> Html {
-    with_default_wrapper(html! {
-        <RoomsView/>
-    })
-}
-
-fn switch_room(room_id: RoomId) -> impl Fn(&MainLink) -> Html {
-    move |_| with_default_wrapper(html! {
-        <RoomView {room_id}/>
-    })
-}
-
-fn switch_game(game_id: GameId) -> impl Fn(&MainLink) -> Html {
-    debug!("switch game");
-    move |_| with_default_wrapper(html! {
-        <GameView/>
-    })
-}
-
 
 impl MainView {
     fn logout(&mut self, ctx: &Context<Self>) {
         self.show_reconnect = false;
         self.context.connection().logout();
-        ctx.link().history().unwrap().push(Route::Login);
+        ctx.link().main().go(Route::Login);
     }
 
     fn connect_ws(&mut self, ctx: &Context<Self>) {
@@ -263,10 +249,12 @@ impl MainView {
         use api::WsResponse::*;
         match msg {
             MoveToRoom(room_id) => {
-                ctx.link().history().unwrap().push(Route::Room { room_id: *room_id });
+                ctx.link().main().go(Route::Room { room_id: *room_id });
             }
             GameStart(game_info) => {
-                ctx.link().history().unwrap().push(Route::Game { game_id: game_info.game_id });
+                ctx.link().main().go(Route::Game {
+                    game_id: game_info.game_id,
+                });
             }
             _ => (),
         }

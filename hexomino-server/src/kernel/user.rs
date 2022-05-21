@@ -197,7 +197,9 @@ impl UserData {
         .await
         .ok()?;
 
-        Some(Self { name: user.name })
+        Some(Self {
+            name: user.name.unwrap_or_else(|| "<Unnamed>".to_string()),
+        })
     }
 }
 

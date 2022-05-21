@@ -11,7 +11,7 @@ derive_api_data! {
         pub password: String,
     }
     pub struct LoginResponse {
-        pub username: String,
+        pub name: String,
         pub token: String,
     }
 }

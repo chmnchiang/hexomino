@@ -106,11 +106,13 @@ impl Kernel {
         res
     }
     pub async fn game_action(&self, user: User, action: GameAction) -> ApiResult<(), GameError> {
-        if let UserStatus::InGame(game) = &user.state().read().status {
-            game.send_user_action(user.id(), action).await
-        } else {
-            Err(GameError::NotInGame)?
-        }
+        let game = {
+            let UserStatus::InGame(game) = &user.state().read().status else { return
+                Err(GameError::NotInGame)?
+            };
+            game.clone()
+        };
+        game.send_user_action(user.id(), action).await
     }
 }
 

@@ -24,7 +24,7 @@ impl Eq for Auth {}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct AuthInner {
-    username: String,
+    name: String,
     token: String,
 }
 
@@ -39,8 +39,8 @@ impl Auth {
         self.inner.borrow().is_some()
     }
 
-    pub fn username(&self) -> Option<String> {
-        Some(self.inner.borrow().as_ref()?.username.clone())
+    pub fn name(&self) -> Option<String> {
+        Some(self.inner.borrow().as_ref()?.name.clone())
     }
 
     pub fn token(&self) -> Option<String> {
@@ -56,7 +56,7 @@ impl Auth {
         }
         let response: LoginResponse = response.json().await?;
         let inner = AuthInner {
-            username: response.username,
+            name: response.name,
             token: response.token,
         };
         inner.save();
@@ -79,7 +79,6 @@ impl AuthInner {
     }
 
     fn load() -> Option<AuthInner> {
-        log::debug!("create");
         match LocalStorage::get(AUTH_SAVE_KEY) {
             Ok(auth) => {
                 Some(auth)
@@ -91,6 +90,7 @@ impl AuthInner {
                     }
                     _ => {
                         log::error!("failed to load auth context: {}", err);
+                        LocalStorage::delete(AUTH_SAVE_KEY);
                     }
                 }
                 None

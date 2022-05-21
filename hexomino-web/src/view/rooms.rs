@@ -78,9 +78,11 @@ impl Component for RoomsView {
                 let id_str = format!("{}", room_id.0);
                 html! {
                     <tr>
-                        <td style="vertical-align: middle">{id_str}</td>
+                        <td style="vertical-align: middle; width: 20%">{id_str}</td>
                         <td style="vertical-align: middle">{users}</td>
-                        <td><button class="button is-success" onclick={join_callback}>{"Join"}</button></td>
+                        <td style="text-align: right; width: 0%">
+                            <button class="button is-success" onclick={join_callback}>{"Join"}</button>
+                        </td>
                     </tr>
                 }
             }
@@ -99,21 +101,50 @@ impl Component for RoomsView {
             });
         };
         html! {
-            <>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>{"Room ID"}</th>
-                            <th>{"Users"}</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody> {
-                        self.rooms.iter().map(room_to_html).collect::<Html>()
-                    } </tbody>
-                </table>
-                <button class="button is-success" {onclick}>{"Create room"}</button>
-            </>
+            <div class="columns is-centered">
+                <div class="column is-half">
+                    <div class="buttons">
+                        <button class="button is-primary" {onclick}>
+                            <span class="icon">
+                                <i class="fa-solid fa-plus"></i>
+                            </span>
+                            <span> {"Create room"} </span>
+                        </button>
+                        <button class="button is-primary">
+                            <span class="icon">
+                                <i class="fa-solid fa-right-to-bracket"></i>
+                            </span>
+                            <span> {"Join a match room"} </span>
+                        </button>
+                        <button class="button" style="margin-left: auto;">
+                            <span class="icon">
+                                <i class="fa-solid fa-arrow-rotate-right"></i>
+                            </span>
+                        </button>
+                    </div>
+                    <h3 class="title">{"Public Rooms"}</h3>
+                    <div class="field">
+                        <p class="control has-icons-left">
+                            <input class="input" placeholder="Search room by ID or user"/>
+                            <span class="icon is-small is-left">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                            </span>
+                        </p>
+                    </div>
+                    <table class="table is-fullwidth is-hoverable">
+                        <thead>
+                            <tr>
+                                <th>{"Room ID"}</th>
+                                <th>{"Users"}</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody> {
+                            self.rooms.iter().map(room_to_html).collect::<Html>()
+                        } </tbody>
+                    </table>
+                </div>
+            </div>
         }
     }
 }

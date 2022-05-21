@@ -12,7 +12,7 @@ pub async fn login_handler(
     let user = sqlx::query!(
         r#"
         SELECT id, name, password FROM Users
-        WHERE name = $1
+        WHERE username = $1
         "#,
         request.username
     )
@@ -27,7 +27,7 @@ pub async fn login_handler(
     }
 
     Ok(Json(LoginResponse {
-        username: user.name,
+        name: user.name.unwrap_or_else(|| "<Unnamed>".to_string()),
         token: create_jwt_token(user.id)
             .await
             .ok_or(CommonError::Unauthorized)?,

@@ -21,13 +21,13 @@ impl Component for PickView {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let state = ctx.props().state.borrow();
-        let core_state = &state.core_game_state;
+        //let core_state = &state.core_game_state;
 
         let hexo_style_func = |hexo| {
             ctx.props()
                 .state
                 .borrow()
-                .core_game_state
+                .core()
                 .inventory()
                 .owner_of(hexo)
                 .map(|player| match player {
@@ -40,9 +40,9 @@ impl Component for PickView {
             .collect::<Vec<_>>();
         html! {
             <>
-                <TurnIndicator current_player={core_state.current_player()}
-                    player_1_name={state.name_of(Player::First).to_string()}
-                    player_2_name={state.name_of(Player::Second).to_string()}/>
+                //<TurnIndicator current_player={core_state.current_player()}
+                    //player_1_name={state.name_of(Player::First).to_string()}
+                    //player_2_name={state.name_of(Player::Second).to_string()}/>
                 <HexoTable {styled_hexos} on_hexo_click={ctx.props().send_pick.clone()}/>
             </>
         }

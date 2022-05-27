@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use api::{
-    Api, GameAction, GameError, JoinedRoom, Never, Room, RoomAction, RoomError, RoomId, StartWsApi,
-    StartWsError, StartWsRequest, UserId, WsRequest,
+    Api, JoinedRoom, MatchAction, MatchError, MatchState, Never, Room, RoomAction, RoomError,
+    RoomId, StartWsApi, StartWsError, StartWsRequest, UserId, WsRequest,
 };
 use axum::extract::ws::{Message, WebSocket};
 use once_cell::sync::OnceCell;
@@ -79,8 +79,8 @@ impl Kernel {
         self.user_pool.get(user_id)
     }
 
-    pub async fn get_room(&self, user: User, room_id: RoomId) -> ApiResult<JoinedRoom, RoomError> {
-        self.room_manager.get_joined_room(user, room_id).await
+    pub async fn get_room(&self, user: User) -> ApiResult<JoinedRoom, RoomError> {
+        self.room_manager.get_joined_room(user).await
     }
     pub async fn list_rooms(&self) -> ApiResult<Vec<Room>, Never> {
         Ok(self.room_manager.list_rooms())
@@ -88,31 +88,34 @@ impl Kernel {
     pub async fn join_room(&self, user: User, room_id: RoomId) -> ApiResult<(), RoomError> {
         self.room_manager.join_room(user, room_id).await
     }
+    pub async fn leave_room(&self, user: User) -> ApiResult<(), RoomError> {
+        self.room_manager.leave_room(user).await
+    }
     pub async fn create_room(&self, user: User) -> ApiResult<RoomId, RoomError> {
+        tracing::debug!("creating room");
         self.room_manager.create_room(user).await
     }
     pub async fn room_action(&self, user: User, action: RoomAction) -> ApiResult<(), RoomError> {
-        let room_id = {
-            let user_state = user.state().read();
-            let UserStatus::InRoom(room_id) = user_state.status else {
-                return Err(RoomError::NotInRoom.into())
-            };
-            room_id
-        };
-        let res = self.room_manager
-            .user_room_action(user, room_id, action)
-            .await;
-        tracing::debug!("ok");
+        let res = self.room_manager.user_room_action(user, action).await;
         res
     }
-    pub async fn game_action(&self, user: User, action: GameAction) -> ApiResult<(), GameError> {
+    pub async fn match_action(&self, user: User, action: MatchAction) -> ApiResult<(), MatchError> {
         let game = {
-            let UserStatus::InGame(game) = &user.state().read().status else { return
-                Err(GameError::NotInGame)?
+            let UserStatus::InGame(game) = &user.state().read().status else {
+                return Err(MatchError::NotInMatch)?
             };
             game.clone()
         };
-        game.send_user_action(user.id(), action).await
+        game.user_action(user, action).await
+    }
+    pub async fn sync_match(&self, user: User) -> ApiResult<MatchState, MatchError> {
+        let game = {
+            let UserStatus::InGame(game) = &user.state().read().status else {
+                return Err(MatchError::NotInMatch)?
+            };
+            game.clone()
+        };
+        game.sync_match(user).await
     }
 }
 

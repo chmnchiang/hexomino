@@ -50,7 +50,7 @@ impl Component for PlaceView {
         match msg {
             Select(hexo) => {
                 if ctx.props().is_locked {
-                    return false;
+                    return false
                 }
                 self.state.selected_hexo = Some(hexo);
                 self.board_weak_link
@@ -73,8 +73,9 @@ impl Component for PlaceView {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let state = ctx.props().state.borrow();
-        let core_state = &state.core_game_state;
-        let Some(current_player) = core_state.current_player() else {return html!{}};
+        let core = state.core();
+        let Some(current_player) = core.current_player()
+            else { return html!() };
         let select_onclick = ctx.link().callback(PlaceAction::Select);
         let shared_link = SharedLink::<BoardCanvas>::new();
         ctx.link()
@@ -82,8 +83,8 @@ impl Component for PlaceView {
 
         let place_hexo_callback = ctx.link().callback(PlaceAction::Placed);
 
-        let _me = state.me;
-        let player_hexos = core_state.inventory().hexos_of(current_player).iter();
+        let _me = state.me();
+        let player_hexos = core.inventory().hexos_of(current_player).iter();
         let styled_hexos = if let Some(selected_hexo) = self.state.selected_hexo {
             player_hexos
                 .map(|hexo| {
@@ -105,7 +106,7 @@ impl Component for PlaceView {
 
         html! {
             <>
-                <TurnIndicator current_player={core_state.current_player()}/>
+                <TurnIndicator current_player={core.current_player()}/>
                 <BoardCanvas state={ctx.props().state.clone()} {shared_link} {place_hexo_callback}/>
                 <HexoTable {styled_hexos} on_hexo_click={select_onclick}/>
             </>

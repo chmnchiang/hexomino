@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
-use api::{GameId, RoomId, WsResult};
-use log::{debug, error};
+use api::{MatchId, RoomId, WsResult, UserStatus};
+use log::{debug, error, info};
 use wasm_bindgen_futures::spawn_local;
 use yew::{
     function_component, html, html::Scope, Callback, Component, Context, ContextProvider, Html,
@@ -13,7 +13,7 @@ use crate::{
         connection::{ws::WsListenerToken, ConnectionError, ConnectionStatus},
         MainContext, ScopeExt,
     },
-    game::GameMode,
+    //game::GameMode,
 };
 
 use self::{
@@ -23,7 +23,7 @@ use self::{
 
 mod game;
 mod login_view;
-mod menu;
+//mod menu;
 mod room;
 mod rooms;
 mod shared_link;
@@ -60,8 +60,8 @@ pub enum ReconnectStatus {
 pub enum Route {
     Login,
     Rooms,
-    Room { room_id: RoomId },
-    Game { game_id: GameId },
+    Room,
+    Game,
 }
 
 pub enum MainMsg {
@@ -103,16 +103,17 @@ impl Component for MainView {
         use MainMsg::*;
         match msg {
             OnLoginOk => {
-                debug!("login ok");
+                log::info!("login ok");
                 self.connect_ws(ctx);
                 false
             }
             OnWsConnected => {
+                log::info!("websocket connected");
                 ctx.link().main().go(Route::Rooms);
                 true
             }
             OnWsRecv(resp) => {
-                debug!("get resp = {:?}", resp);
+                log::debug!("get resp = {:?}", resp);
                 self.receive_ws_message(ctx, &*resp);
                 true
             }
@@ -153,7 +154,11 @@ impl Component for MainView {
         let modal_reconnect_cb = ctx.link().callback(|_| MainMsg::ReconnectWs);
         html! {
             <main>
-                <> { self.route_view(ctx) } </>
+                //if let Route::Login = self.route {
+                //} else {
+                    //{ self.navbar_view() }
+                //}
+                { self.route_view(ctx) }
                 if self.show_reconnect {
                     <WsReconnectModal logout_cb={modal_logout_cb} reconnect_cb={modal_reconnect_cb}/>
                 }
@@ -175,8 +180,8 @@ impl MainView {
         let inner = match self.route {
             Route::Login => unreachable!(),
             Route::Rooms => self.rooms_view(),
-            Route::Room { room_id } => self.room_view(room_id),
-            Route::Game { game_id } => self.game_view(game_id),
+            Route::Room => self.room_view(),
+            Route::Game => self.game_view(),
         };
 
         html! {
@@ -201,15 +206,30 @@ impl MainView {
         }
     }
 
-    fn room_view(&self, room_id: RoomId) -> Html {
+    fn room_view(&self) -> Html {
         html! {
-            <RoomView {room_id}/>
+            <RoomView/>
         }
     }
 
-    fn game_view(&self, _game_id: GameId) -> Html {
+    fn game_view(&self) -> Html {
         html! {
             <GameView/>
+        }
+    }
+
+    fn navbar_view(&self) -> Html {
+        html! {
+            <nav class="navbar is-light" role="navigation" aria-label="main navigation">
+                <div id="navbarBasicExample" class="navbar-menu">
+                    <div class="navbar-start">
+                        <a class="navbar-item">{ "Room" }</a>
+                    </div>
+                    <div class="navbar-end">
+                        <a class="navbar-item">{ "Logout" }</a>
+                    </div>
+                </div>
+            </nav>
         }
     }
 }
@@ -222,6 +242,7 @@ impl MainView {
     }
 
     fn connect_ws(&mut self, ctx: &Context<Self>) {
+            debug!("call connect");
         let context = self.context.clone();
         let link = ctx.link().clone();
         self.show_reconnect = false;
@@ -248,13 +269,15 @@ impl MainView {
     fn receive_ws_message(&self, ctx: &Context<Self>, msg: &WsResult) {
         use api::WsResponse::*;
         match msg {
-            MoveToRoom(room_id) => {
-                ctx.link().main().go(Route::Room { room_id: *room_id });
-            }
-            GameStart(game_info) => {
-                ctx.link().main().go(Route::Game {
-                    game_id: game_info.game_id,
-                });
+            UserStatusUpdate(status) => {
+                let next_route = match status {
+                    UserStatus::Idle => Some(Route::Rooms),
+                    UserStatus::InRoom => Some(Route::Room),
+                    UserStatus::InGame => Some(Route::Game),
+                };
+                if let Some(next_route) = next_route {
+                    ctx.link().main().go(next_route);
+                }
             }
             _ => (),
         }

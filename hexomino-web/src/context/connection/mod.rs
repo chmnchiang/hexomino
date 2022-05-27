@@ -1,7 +1,7 @@
-use std::{future::Future};
+use std::{future::Future, rc::Rc};
 
 use anyhow::anyhow;
-use api::{Api};
+use api::{Api, User};
 use futures::FutureExt;
 use gloo::net::http::Request;
 use yew::{Callback};
@@ -63,7 +63,7 @@ impl ConnectionError {
 impl Connection {
     pub fn new(connection_error_handler: Callback<ConnectionError>) -> Self {
         Self {
-            auth: Auth::try_load(),
+            auth: Auth::default(),
             ws: WsConnection::default(),
             connection_error_handler,
         }
@@ -79,8 +79,16 @@ impl Connection {
         }
     }
 
+    pub async fn load_auth(&self) -> Result<()> {
+        self.auth.load_and_refresh_token().await
+    }
+
     pub async fn login(&self, username: String, password: String) -> Result<()> {
         self.auth.login(username, password).await
+    }
+
+    pub fn me(&self) -> Option<Rc<User>> {
+        self.auth.me()
     }
 
     pub fn logout(&self) {

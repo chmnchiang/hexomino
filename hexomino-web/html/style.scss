@@ -19,16 +19,20 @@ $player-they-color: rgb(192, 32, 0);
   background-color: $player-they-color !important;
 }
 
-div.hexo-table-flexbox {
-  display: flex;
-  flex-flow: row wrap;
-  justify-content: center;
-  gap: 5px 5px;
+ul.hexo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 80px);
+  grid-gap: 1rem;
+  justify-content: space-between;
+  //display: flex;
+  //flex-flow: row wrap;
+  //justify-content: space-between;
+  //gap: 5px 5px;
 }
 
 .hexo-block {
-  width: 100px;
-  height: 100px;
+  width: 80px;
+  height: 80px;
 }
 
 //.hexo-block {
@@ -98,8 +102,4 @@ div.hexo-div:hover svg {
   to {
     transform: rotate(360deg);
   }
-}
-
-.card.is-success {
-  background-color: #48c78e;
 }

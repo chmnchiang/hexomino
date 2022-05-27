@@ -125,7 +125,7 @@ impl Component for BoardCanvas {
                 }
                 Clicked => {
                     let state = ctx.props().state.borrow();
-                    let board = state.core_game_state.board();
+                    let board = state.core().board();
                     if let Some(moved_hexo) = self.get_moved_hexo_on_click(board) {
                         ctx.props().place_hexo_callback.emit(moved_hexo);
                         self.render_state.rhexo = None;

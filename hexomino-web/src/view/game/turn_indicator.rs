@@ -5,43 +5,41 @@ use hexomino_core::Player;
 #[derive(Properties, PartialEq)]
 pub struct TurnIndicatorProps {
     pub current_player: Option<Player>,
-    #[prop_or("Player 1".to_string())]
-    pub player_1_name: String,
-    #[prop_or("Player 2".to_string())]
-    pub player_2_name: String,
+    #[prop_or([0, 0])]
+    pub scores: [u32; 2],
+    #[prop_or(["Player 1".to_string(), "Player 2".to_string()])]
+    pub player_names: [String; 2],
 }
 
 #[function_component(TurnIndicator)]
 pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
     const WIDTH: i32 = 3000;
     const HEIGHT: i32 = 100;
+    const SCORE_LEN: i32 = 150;
     const D_LEN: i32 = 50;
     const SPACE: i32 = 20;
     const MARGIN: i32 = 10;
     const FONT_SIZE: i32 = HEIGHT * 4 / 5;
     const FONT_PADDING: i32 = 20;
-    let viewbox = format!(
-        "{} {} {} {}",
-        -MARGIN,
-        -MARGIN,
-        WIDTH + MARGIN * 2,
-        HEIGHT + MARGIN * 2,
-    );
+    let viewbox = format!("{} {} {} {}", 0, 0, WIDTH, HEIGHT);
+    let shape_score_1 = format!("M0 0 h{} v{} h{} Z", SCORE_LEN, HEIGHT, -SCORE_LEN);
     let shape_player_1 = format!(
-        "M0 0 H{} l{} {} H{} Z",
+        "M{} 0 H{} l{} {} H{} Z",
+        SCORE_LEN + MARGIN,
         D_LEN + WIDTH / 2 - SPACE / 2,
         -D_LEN * 2,
         HEIGHT,
-        0,
+        SCORE_LEN + MARGIN,
     );
+    let shape_score_2 = format!("M{} {} h{} v{} h{} Z", WIDTH, 0, -SCORE_LEN, HEIGHT, SCORE_LEN);
     let shape_player_2 = format!(
         "M{} {} H{} l{} {} H{} Z",
-        WIDTH,
+        WIDTH - SCORE_LEN - MARGIN,
         HEIGHT,
         -D_LEN + WIDTH / 2 + SPACE / 2,
         D_LEN * 2,
         -HEIGHT,
-        WIDTH,
+        WIDTH - SCORE_LEN - MARGIN,
     );
     let (player1_opacity, player2_opacity) = match props.current_player {
         Some(Player::First) => (1.0, 0.5),
@@ -53,12 +51,18 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
     html! {
         <div style="width: 100%">
             <svg width="100%" viewBox={viewbox}>
+            <path d={shape_score_1} style={player1_style.clone()}/>
             <path d={shape_player_1} style={player1_style}/>
+            <path d={shape_score_2} style={player2_style.clone()}/>
             <path d={shape_player_2} style={player2_style}/>
-            <text x={FONT_PADDING.to_string()} y={(HEIGHT/2).to_string()}
-                font-size="80" alignment-baseline="central">{props.player_1_name.clone()}</text>
-            <text x={(WIDTH - FONT_PADDING).to_string()} y={(HEIGHT/2).to_string()} font-size="80"
-                text-anchor="end" alignment-baseline="central">{props.player_2_name.clone()}</text>
+            <text x={(SCORE_LEN/2).to_string()} y={(HEIGHT/2).to_string()}
+                font-size="80" alignment-baseline="central" text-anchor="middle">{props.scores[0]}</text>
+            <text x={(FONT_PADDING + SCORE_LEN + MARGIN).to_string()} y={(HEIGHT/2).to_string()}
+                font-size="80" alignment-baseline="central">{props.player_names[0].clone()}</text>
+            <text x={(WIDTH - SCORE_LEN/2).to_string()} y={(HEIGHT/2).to_string()}
+                font-size="80" alignment-baseline="central" text-anchor="middle">{props.scores[1]}</text>
+            <text x={(WIDTH - FONT_PADDING - SCORE_LEN - MARGIN).to_string()} y={(HEIGHT/2).to_string()} font-size="80"
+                text-anchor="end" alignment-baseline="central">{props.player_names[1].clone()}</text>
             </svg>
         </div>
     }

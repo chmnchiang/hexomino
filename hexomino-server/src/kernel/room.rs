@@ -6,9 +6,9 @@ use std::{
     },
 };
 
-use api::{GameInfo, RoomAction, RoomError, RoomId, UserId, WsResponse};
+use api::{MatchInfo, RoomAction, RoomError, RoomId, UserId, WsResponse};
 use itertools::Itertools;
-use parking_lot::{RwLock, RwLockWriteGuard};
+use parking_lot::{RwLock, RwLockWriteGuard, MutexGuard, RwLockReadGuard};
 
 use crate::{
     kernel::{user::UserStatus, User},
@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     actor::{Actor, Addr, Context, Handler},
-    game::GameActor,
+    game::MatchActor,
     user::UserState,
 };
 
@@ -47,27 +47,14 @@ impl RoomManagerHandle {
     pub async fn join_room(&self, user: User, room_id: RoomId) -> Result<()> {
         self.addr.send(JoinRoom { user, room_id }).await
     }
-    pub async fn get_joined_room(&self, user: User, room_id: RoomId) -> Result<api::JoinedRoom> {
-        self.addr
-            .send(GetJoinedRoom {
-                user_id: user.id(),
-                room_id,
-            })
-            .await
+    pub async fn leave_room(&self, user: User) -> Result<()> {
+        self.addr.send(LeaveRoom { user }).await
     }
-    pub async fn user_room_action(
-        &self,
-        user: User,
-        room_id: RoomId,
-        action: RoomAction,
-    ) -> Result<()> {
-        self.addr
-            .send(UserRoomAction {
-                user_id: user.id(),
-                room_id,
-                action,
-            })
-            .await
+    pub async fn get_joined_room(&self, user: User) -> Result<api::JoinedRoom> {
+        self.addr.send(GetJoinedRoom { user }).await
+    }
+    pub async fn user_room_action(&self, user: User, action: RoomAction) -> Result<()> {
+        self.addr.send(UserRoomAction { user, action }).await
     }
 }
 
@@ -91,6 +78,7 @@ struct CreateRoom {
 impl Handler<CreateRoom> for RoomManager {
     type Output = Result<RoomId>;
     fn handle(&mut self, msg: CreateRoom, _ctx: &Context<Self>) -> Self::Output {
+        tracing::debug!("handling creating room");
         let user = msg.user;
         let user_clone = user.clone();
         let mut user_state = user.state().write();
@@ -102,7 +90,8 @@ impl Handler<CreateRoom> for RoomManager {
         self.rooms.insert(room_id, room);
         user_state.status = UserStatus::InRoom(room_id);
 
-        user.do_send(WsResponse::MoveToRoom(room_id));
+        drop(user_state);
+        user.send_status_update();
         self.update_cached_rooms();
         Ok(room_id)
     }
@@ -123,7 +112,32 @@ impl Handler<JoinRoom> for RoomManager {
         let room = self.get_mut(room_id)?;
         room.user_enter(msg.user.clone())?;
         user_state.status = UserStatus::InRoom(room_id);
-        msg.user.do_send(WsResponse::MoveToRoom(room_id));
+        drop(user_state);
+        msg.user.send_status_update();
+        room.broadcast_update();
+        self.update_cached_rooms();
+        Ok(())
+    }
+}
+
+struct LeaveRoom {
+    user: User,
+}
+
+impl Handler<LeaveRoom> for RoomManager {
+    type Output = Result<()>;
+    fn handle(&mut self, msg: LeaveRoom, _ctx: &Context<Self>) -> Self::Output {
+        let user_id = msg.user.id();
+        let mut user_state = msg.user.state().write();
+        let UserStatus::InRoom(room_id) = user_state.status
+            else { return Err(RoomError::NotInRoom.into()); };
+        let room = self.get_mut(room_id)?;
+
+        room.users.retain(|u| u.user.id() != user_id);
+        user_state.status = UserStatus::Idle;
+        drop(user_state);
+        msg.user.send_status_update();
+
         room.broadcast_update();
         self.update_cached_rooms();
         Ok(())
@@ -131,16 +145,18 @@ impl Handler<JoinRoom> for RoomManager {
 }
 
 struct GetJoinedRoom {
-    user_id: UserId,
-    room_id: RoomId,
+    user: User,
 }
 
 impl Handler<GetJoinedRoom> for RoomManager {
     type Output = Result<api::JoinedRoom>;
     fn handle(&mut self, msg: GetJoinedRoom, _ctx: &Context<Self>) -> Self::Output {
-        let room = self.get_mut(msg.room_id)?;
-        if room.get_user_mut(msg.user_id).is_none() {
-            Err(RoomError::NotInRoom)?
+        let user_state = msg.user.state().read();
+        let UserStatus::InRoom(room_id) = user_state.status
+            else { return Err(RoomError::NotInRoom.into()); };
+        let room = self.get_mut(room_id)?;
+        if room.get_user_mut(msg.user.id()).is_none() {
+            return Err(RoomError::NotInRoom.into())
         }
         Ok(room.to_joined_room())
     }
@@ -148,16 +164,19 @@ impl Handler<GetJoinedRoom> for RoomManager {
 
 #[derive(Debug)]
 struct UserRoomAction {
-    user_id: UserId,
-    room_id: RoomId,
+    user: User,
     action: RoomAction,
 }
 
 impl Handler<UserRoomAction> for RoomManager {
     type Output = Result<()>;
     fn handle(&mut self, msg: UserRoomAction, _ctx: &Context<Self>) -> Self::Output {
-        let room = self.get_mut(msg.room_id)?;
-        room.room_action(msg.user_id, msg.action)
+        let user_state = msg.user.state().read();
+        let UserStatus::InRoom(room_id) = user_state.status
+            else { return Err(RoomError::NotInRoom.into()); };
+        let room = self.get_mut(room_id)?;
+        drop(user_state);
+        room.room_action(msg.user.id(), msg.action)
     }
 }
 
@@ -230,20 +249,17 @@ impl Room {
     }
 
     fn start_game(&self) {
+        tracing::debug!("game start...");
         let users = [&self.users[0].user, &self.users[1].user];
-        let api_users = users.map(|u| u.to_api());
         let user_states = lock_both_user_states(users);
-        let game = GameActor::new(users.map(|x| x.clone())).start();
+        let game = MatchActor::new(users.map(|x| x.clone())).start();
 
         for mut state in user_states {
             state.status = UserStatus::InGame(game.clone());
         }
+
         for user in users {
-            user.do_send(WsResponse::GameStart(GameInfo {
-                game_id: game.id(),
-                users: api_users.clone(),
-                me: hexomino_core::Player::First,
-            }));
+            user.send_status_update();
         }
     }
 

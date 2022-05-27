@@ -1,4 +1,4 @@
-use api::{RoomId, GameId};
+use api::{RoomId, MatchId};
 use yew::Callback;
 
 use crate::view::{MainMsg, Route};

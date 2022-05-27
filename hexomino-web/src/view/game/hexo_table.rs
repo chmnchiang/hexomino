@@ -39,14 +39,14 @@ pub fn hexo_table(props: &HexoTableProps) -> Html {
 
     html! {
         <div style="width: 100%;">
-            <div class="hexo-table-flexbox" style="width: 100%;"> {
+            <ul class="hexo-grid" style="width: 100%;"> {
                 props.styled_hexos
                     .iter()
                     .chunks(CHUNK_SIZE)
                     .into_iter()
                     .map(|chunk| hexo_chunk_html(chunk, props.on_hexo_click.clone()))
                     .collect::<Html>()
-            } </div>
+            } </ul>
         </div>
     }
 }

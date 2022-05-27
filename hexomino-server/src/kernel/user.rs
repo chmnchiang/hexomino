@@ -33,7 +33,7 @@ use crate::{
     DbPool,
 };
 
-use super::game::GameHandle;
+use super::game::MatchHandle;
 
 #[derive(Clone, Debug, derive_more::Deref)]
 pub struct User(Arc<UserInner>);
@@ -51,7 +51,7 @@ pub struct UserInner {
     #[getset(get_copy = "pub")]
     id: UserId,
     #[getset(get = "pub")]
-    data: RwLock<UserData>,
+    data: UserData,
     #[getset(get = "pub")]
     state: RwLock<UserState>,
     #[derivative(Debug = "ignore")]
@@ -61,7 +61,7 @@ pub struct UserInner {
 
 #[derive(Debug)]
 pub struct UserData {
-    name: String,
+    pub name: String,
 }
 
 #[derive(Debug)]
@@ -73,7 +73,7 @@ pub struct UserState {
 pub enum UserStatus {
     Idle,
     InRoom(RoomId),
-    InGame(GameHandle),
+    InGame(MatchHandle),
 }
 
 type WsStream = TakeUntilIf<SplitStream<WebSocket>, Tripwire>;
@@ -141,14 +141,14 @@ impl Connection {
 }
 
 impl UserInner {
-    fn name(&self) -> String {
-        self.data.read().name.clone()
+    fn name(&self) -> &str {
+        &self.data.name
     }
 
     pub fn to_api(&self) -> api::User {
         api::User {
             id: self.id,
-            name: self.name(),
+            name: self.name().to_string(),
         }
     }
 
@@ -175,12 +175,10 @@ impl UserInner {
         );
     }
 
-    pub fn send_initial_position(&self) {
-        use UserStatus::*;
-        match self.state().read().status {
-            InRoom(room_id) => self.do_send(WsResult::MoveToRoom(room_id)),
-            _ => (),
-        }
+    pub fn send_status_update(&self) {
+        self.do_send(api::WsResponse::UserStatusUpdate(
+            self.state().read().status.to_api(),
+        ));
     }
 }
 
@@ -249,7 +247,7 @@ impl UserPool {
             };
             let user = UserInner {
                 id,
-                data: RwLock::new(data),
+                data,
                 state: RwLock::new(UserState {
                     status: UserStatus::Idle,
                 }),
@@ -263,12 +261,12 @@ impl UserPool {
         self.users.insert(user.id(), Arc::downgrade(&user.0));
 
         let msg: <StartWsApi as Api>::Response = Ok(StartWsResponse {
-            username: user.name(),
+            username: user.name().to_string(),
         });
         if let Ok(buf) = bincode::serialize(&msg) {
             let _ = user.connection().send(Message::Binary(buf)).await;
             debug!("User connect ok");
-            user.send_initial_position();
+            user.send_status_update();
         } else {
             debug!("failed to serialize StartWsResult: {:?}", msg.unwrap_err());
         }
@@ -276,7 +274,7 @@ impl UserPool {
 }
 
 async fn connection_recv_loop(user: User, mut receiver: WsStream) {
-    trace!("recv loop");
+    debug!("recv loop");
     while let Some(msg) = receiver.next().await {
         match msg {
             Ok(msg) => {
@@ -290,7 +288,18 @@ async fn connection_recv_loop(user: User, mut receiver: WsStream) {
             }
         }
     }
-    trace!("end of recv loop");
+    debug!("end of recv loop");
+}
+
+impl UserStatus {
+    fn to_api(&self) -> api::UserStatus {
+        use UserStatus::*;
+        match self {
+            Idle => api::UserStatus::Idle,
+            InRoom(..) => api::UserStatus::InRoom,
+            InGame(..) => api::UserStatus::InGame,
+        }
+    }
 }
 
 #[async_trait]

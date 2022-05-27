@@ -32,6 +32,7 @@ derive_more = "0.99.17"
 serde = "1.0.136"
 thiserror = "1.0.30"
 serde_json = "1.0.79"
+getset = "0.1.2"
 
 [dependencies.getrandom]
 version = "0.2"

@@ -1,4 +1,4 @@
-use crate::{derive_api_data, Api, RoomId, JoinedRoom, GameInfo, GameEvent};
+use crate::{derive_api_data, Api, RoomId, JoinedRoom, MatchInfo, GameEvent, MatchId};
 
 pub struct StartWsApi;
 impl Api for StartWsApi {
@@ -30,10 +30,15 @@ derive_api_data! {
 
 pub enum WsRequest {}
 pub enum WsResponse {
-    MoveToRoom(RoomId),
+    UserStatusUpdate(UserStatus),
     RoomUpdate(JoinedRoom),
-    GameStart(GameInfo),
     GameEvent(GameEvent),
+}
+
+pub enum UserStatus {
+    Idle,
+    InRoom,
+    InGame,
 }
 
 #[derive(thiserror::Error)]

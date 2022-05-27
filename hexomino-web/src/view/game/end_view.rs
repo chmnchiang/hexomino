@@ -25,7 +25,7 @@ struct RenderState {
 #[function_component(EndView)]
 pub fn end_view(props: &EndViewProps) -> Html {
     let state = props.state.borrow();
-    let winner = state.core_game_state.winner().unwrap();
+    let winner = state.core().winner().unwrap();
     let canvas_ref = use_node_ref();
     let web_render_context = use_mut_ref(|| None);
     let render_func = {

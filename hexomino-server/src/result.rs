@@ -1,4 +1,4 @@
-use api::{RoomError, Never, GameError};
+use api::{RoomError, Never, MatchError};
 
 
 use serde::Serialize;
@@ -16,7 +16,7 @@ pub enum Error<E: ApiError> {
 pub trait ApiError: Serialize {}
 impl ApiError for Never {}
 impl ApiError for RoomError {}
-impl ApiError for GameError {}
+impl ApiError for MatchError {}
 
 #[derive(thiserror::Error, Debug)]
 pub enum CommonError {

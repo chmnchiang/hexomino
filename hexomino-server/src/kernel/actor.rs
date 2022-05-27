@@ -1,9 +1,9 @@
 use parking_lot::Mutex;
 use std::{collections::VecDeque, future::Future, sync::Arc};
 use tokio::{
-    spawn,
+    select, spawn,
     sync::{
-        mpsc::{self, Sender},
+        mpsc::{self, Sender, UnboundedSender},
         oneshot,
     },
 };
@@ -11,17 +11,29 @@ use tokio::{
 pub trait Actor: Sized + Send + 'static {
     fn start(mut self) -> Addr<Self> {
         let (sender, mut receiver) = mpsc::channel(16);
-        let fast_queue = Arc::new(Mutex::new(VecDeque::new()));
-        let addr = Addr {
-            sender,
-            fast_queue: fast_queue.clone(),
-        };
+        let (inner_sender, mut inner_receiver) = mpsc::unbounded_channel();
+        let addr = Addr { sender };
 
         {
-            let context = Context { fast_queue };
+            let context = Context { inner_sender };
             spawn(async move {
-                while let Some(msg) = receiver.recv().await {
-                    msg.process_by(&mut self, &context);
+                let context = context;
+                loop {
+                    select! {
+                        msg = receiver.recv() => {
+                            match msg {
+                                Some(msg) => msg.process_by(&mut self, &context),
+                                None => return
+                            }
+                        }
+                        msg = inner_receiver.recv() => {
+
+                            match msg.expect("inner_sender would never be dropped") {
+                                FastMsg::Stop => return,
+                                FastMsg::Msg(msg) => msg.process_by(&mut self, &context),
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -36,14 +48,12 @@ type SealedMsg<A> = Box<dyn ProcessBy<A> + Send>;
 
 pub struct Addr<A: Actor> {
     sender: Sender<SealedMsg<A>>,
-    fast_queue: Arc<Mutex<VecDeque<FastMsg<A>>>>,
 }
 
 impl<A: Actor> Clone for Addr<A> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
-            fast_queue: self.fast_queue.clone(),
         }
     }
 }
@@ -75,9 +85,7 @@ impl<A: Actor> Addr<A> {
         A: Handler<M>,
         M: Send + 'static,
     {
-        self.fast_queue
-            .lock()
-            .push_back(FastMsg::Msg(Box::new(MsgNoReturnWrap(msg))));
+        todo!();
     }
 }
 
@@ -88,13 +96,13 @@ enum FastMsg<A: Actor> {
 }
 
 pub struct Context<A: Actor> {
-    fast_queue: Arc<Mutex<VecDeque<FastMsg<A>>>>,
+    inner_sender: UnboundedSender<FastMsg<A>>,
 }
 
 impl<A: Actor> Clone for Context<A> {
     fn clone(&self) -> Self {
         Self {
-            fast_queue: self.fast_queue.clone(),
+            inner_sender: self.inner_sender.clone(),
         }
     }
 }
@@ -106,9 +114,9 @@ impl<A: Actor> Context<A> {
         A: Handler<M>,
         M: Send + 'static,
     {
-        self.fast_queue
-            .lock()
-            .push_back(FastMsg::Msg(Box::new(MsgNoReturnWrap(msg))));
+        let _ = self
+            .inner_sender
+            .send(FastMsg::Msg(Box::new(MsgNoReturnWrap(msg))));
     }
 }
 

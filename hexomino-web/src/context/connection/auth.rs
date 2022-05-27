@@ -1,6 +1,6 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, rc::Rc};
 
-use api::{LoginRequest, LoginResponse};
+use api::{LoginRequest, LoginResponse, User, UserId, RefreshTokenRequest, RefreshTokenResponse, AuthResponse};
 use gloo::{
     net::http::Request,
     storage::{errors::StorageError, LocalStorage, Storage},
@@ -11,6 +11,7 @@ use crate::util::ResultExt;
 
 use super::{ConnectionError, Result};
 
+#[derive(Default)]
 pub struct Auth {
     inner: RefCell<Option<AuthInner>>,
 }
@@ -22,66 +23,79 @@ impl PartialEq for Auth {
 }
 impl Eq for Auth {}
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Clone, Debug)]
 struct AuthInner {
-    name: String,
     token: String,
+    me: Rc<User>,
 }
 
 impl Auth {
-    pub fn try_load() -> Self {
-        Self {
-            inner: RefCell::new(AuthInner::load()),
-        }
-    }
-
-    pub fn authenticated(&self) -> bool {
+    pub(super) fn authenticated(&self) -> bool {
         self.inner.borrow().is_some()
     }
 
-    pub fn name(&self) -> Option<String> {
-        Some(self.inner.borrow().as_ref()?.name.clone())
+    pub(super) fn me(&self) -> Option<Rc<User>> {
+        Some(self.inner.borrow().as_ref()?.me.clone())
     }
 
-    pub fn token(&self) -> Option<String> {
+    pub(super) fn token(&self) -> Option<String> {
         Some(self.inner.borrow().as_ref()?.token.clone())
     }
 
-    pub async fn login(&self, username: String, password: String) -> Result<()> {
+    pub(super) async fn login(&self, username: String, password: String) -> Result<()> {
         let payload = LoginRequest { username, password };
-        let response = Request::post("/api/login").json(&payload)?.send().await?;
+        let response = Request::post("/api/auth/login").json(&payload)?.send().await?;
         if !response.ok() {
             let text = response.text().await.anyhow()?;
             return Err(ConnectionError::from_response(response.status(), text));
         }
         let response: LoginResponse = response.json().await?;
-        let inner = AuthInner {
-            name: response.name,
-            token: response.token,
-        };
-        inner.save();
-        *self.inner.borrow_mut() = Some(inner);
+        self.process_auth_response(response);
         Ok(())
     }
 
-    pub fn logout(&self) {
+    pub(super) async fn load_and_refresh_token(&self) -> Result<()> {
+        let token = load_token().ok_or(ConnectionError::Unauthorized)?;
+        let request = Request::post("/api/auth/refresh_token")
+            .header("Authorization", &format!("Bearer {}", token))
+            .json(&())?;
+        let result = request.send().await?;
+        if !result.ok() {
+            return Err(ConnectionError::Unauthorized)
+        }
+        let response = result.json::<RefreshTokenResponse>().await?;
+        self.process_auth_response(response);
+        Ok(())
+    }
+
+
+    pub(super) fn logout(&self) {
         *self.inner.borrow_mut() = None;
+        clear_token();
+    }
+
+    fn process_auth_response(&self, resp: AuthResponse) {
+        save_token(&resp.token);
+        let inner = AuthInner {
+            me: Rc::new(resp.me),
+            token: resp.token,
+        };
+        *self.inner.borrow_mut() = Some(inner);
     }
 }
 
-const AUTH_SAVE_KEY: &str = "auth";
+const TOKEN_SAVE_KEY: &str = "auth_token";
 
-impl AuthInner {
-    fn save(&self) {
-        if let Err(err) = LocalStorage::set(AUTH_SAVE_KEY, self.clone()) {
-            log::error!("failed to store auth context: {}", err);
-        }
+fn save_token(token: &str) {
+    if let Err(err) = LocalStorage::set(TOKEN_SAVE_KEY, token.clone()) {
+        log::error!("failed to store auth context: {}", err);
     }
+}
 
-    fn load() -> Option<AuthInner> {
-        match LocalStorage::get(AUTH_SAVE_KEY) {
-            Ok(auth) => {
-                Some(auth)
+fn load_token() -> Option<String> {
+        match LocalStorage::get(TOKEN_SAVE_KEY) {
+            Ok(token) => {
+                Some(token)
             }
             Err(err) => {
                 match err {
@@ -90,11 +104,14 @@ impl AuthInner {
                     }
                     _ => {
                         log::error!("failed to load auth context: {}", err);
-                        LocalStorage::delete(AUTH_SAVE_KEY);
+                        clear_token();
                     }
                 }
                 None
             }
         }
-    }
+}
+
+fn clear_token() {
+    LocalStorage::delete(TOKEN_SAVE_KEY);
 }

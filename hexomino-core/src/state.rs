@@ -209,6 +209,11 @@ impl State {
             }
         }
     }
+
+    pub fn set_winner(&mut self, winner: Player) {
+        self.current_player = winner.other();
+        self.phase = GamePhase::End;
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

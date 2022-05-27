@@ -159,7 +159,7 @@ impl<'a> BoardRenderer<'a> {
             .config
             .game_view_state
             .borrow()
-            .core_game_state
+            .core()
             .board()
             .placed_hexos()
             .to_vec();
@@ -227,7 +227,7 @@ impl<'a> BoardRenderer<'a> {
     fn render_placed_hexos_with_conflict(&mut self, placed_hexos: PlacedHexo) {
         let game_view_state = self.config.game_view_state.clone();
         let game_view_state = game_view_state.borrow();
-        let board = game_view_state.core_game_state.board();
+        let board = game_view_state.core().board();
         let moved_hexo = placed_hexos.moved_hexo();
         for tile in moved_hexo.tiles() {
             let x = tile.x as f64 * BLOCK_LENGTH;

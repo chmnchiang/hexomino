@@ -46,6 +46,7 @@ type Result<T> = std::result::Result<T, RoomError>;
 derive_api_data! {
     pub struct ListRoomsApi;
     pub struct JoinRoomApi;
+    pub struct LeaveRoomApi;
     pub struct CreateRoomApi;
     pub struct GetRoomApi;
     pub struct RoomActionApi;
@@ -64,6 +65,13 @@ impl Api for JoinRoomApi {
     type Response = Result<JoinRoomResponse>;
 }
 
+pub type LeaveRoomRequest = ();
+pub type LeaveRoomResponse = ();
+impl Api for LeaveRoomApi {
+    type Request = LeaveRoomRequest;
+    type Response = Result<LeaveRoomResponse>;
+}
+
 pub type CreateRoomRequest = ();
 pub type CreateRoomResponse = RoomId;
 impl Api for CreateRoomApi {
@@ -71,7 +79,7 @@ impl Api for CreateRoomApi {
     type Response = Result<CreateRoomResponse>;
 }
 
-pub type GetRoomRequest = RoomId;
+pub type GetRoomRequest = ();
 pub type GetRoomResponse = JoinedRoom;
 impl Api for GetRoomApi {
     type Request = GetRoomRequest;

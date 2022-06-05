@@ -17,5 +17,4 @@ thiserror = "1.0.30"
 uuid = { version = "1.0.0", features = ["serde"] }
 
 [features]
-internal-debug = []
 axum = ["dep:axum"]

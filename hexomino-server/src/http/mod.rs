@@ -66,6 +66,7 @@ impl CommonError {
 
 impl IntoResponse for CommonError {
     fn into_response(self) -> Response {
+        tracing::debug!("{:?}", &self);
         (self.status_code(), format!("{self}")).into_response()
     }
 }

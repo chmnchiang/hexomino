@@ -1,11 +1,12 @@
 use parking_lot::Mutex;
-use std::{collections::VecDeque, future::Future, sync::Arc};
+use std::{collections::VecDeque, future::Future, sync::Arc, time::Duration};
 use tokio::{
     select, spawn,
     sync::{
         mpsc::{self, Sender, UnboundedSender},
         oneshot,
     },
+    time::sleep,
 };
 
 pub trait Actor: Sized + Send + 'static {
@@ -27,7 +28,6 @@ pub trait Actor: Sized + Send + 'static {
                             }
                         }
                         msg = inner_receiver.recv() => {
-
                             match msg.expect("inner_sender would never be dropped") {
                                 FastMsg::Stop => return,
                                 FastMsg::Msg(msg) => msg.process_by(&mut self, &context),
@@ -107,7 +107,6 @@ impl<A: Actor> Clone for Context<A> {
     }
 }
 
-#[allow(dead_code)]
 impl<A: Actor> Context<A> {
     pub fn notify<M>(&self, msg: M)
     where
@@ -117,6 +116,18 @@ impl<A: Actor> Context<A> {
         let _ = self
             .inner_sender
             .send(FastMsg::Msg(Box::new(MsgNoReturnWrap(msg))));
+    }
+
+    pub fn notify_later<M>(&self, msg: M, after: Duration)
+    where
+        A: Handler<M>,
+        M: Send + 'static,
+    {
+        let inner_sender = self.inner_sender.clone();
+        spawn(async move {
+            let _ = sleep(after).await;
+            let _ = inner_sender.send(FastMsg::Msg(Box::new(MsgNoReturnWrap(msg))));
+        });
     }
 }
 

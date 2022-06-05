@@ -1,24 +1,28 @@
 use std::{cell::RefCell, rc::Rc};
 
 use api::{
-    GameEvent, MatchAction, MatchActionApi, MatchInfo, SyncMatchApi, UserPlay, WsResponse, WsResult, GameStartInfo, GameEndInfo,
+    GameEndInfo, MatchAction, MatchActionApi, MatchEndInfo, MatchEvent, MatchInfo, SyncMatchApi,
+    UserPlay, WsResponse, WsResult,
 };
-use hexomino_core::{Action, GamePhase, Hexo};
+use hexomino_core::{Action, GamePhase, Hexo, Player};
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Component, Context, Html, Properties};
 
 use self::{end_view::EndView, pick_view::PickView, place_view::PlaceView};
 use crate::{
     context::{connection::ws::WsListenerToken, ScopeExt},
-    game::{GameState, SharedGameState, MatchState},
-    util::ResultExt, view::game::turn_indicator::TurnIndicator,
+    game::{GameState, MatchError, MatchInnerState, MatchPhase, MatchState, SharedGameState},
+    util::ResultExt,
+    view::game::{match_end_view::MatchEndView, turn_indicator::TurnIndicator},
 };
 
 mod board_canvas;
 mod board_renderer;
+mod bottom_message;
 mod end_view;
 mod hexo_svg;
 mod hexo_table;
+mod match_end_view;
 mod pick_view;
 mod place_view;
 mod turn_indicator;
@@ -34,9 +38,10 @@ pub struct GameView {
 
 pub enum GameMsg {
     OnSyncMatch(api::MatchState),
-    OnStartGame(GameStartInfo),
+    OnStartGame(Player),
     OnUserPlay(UserPlay),
     OnGameEnd(GameEndInfo),
+    OnMatchEnd(MatchEndInfo),
     UserPlay(Action),
 }
 
@@ -56,15 +61,17 @@ impl Component for GameView {
         let ws_listener_token =
             connection.register_ws_callback(ctx.link().batch_callback(|resp: Rc<WsResult>| {
                 match (&*resp).clone() {
-                    WsResponse::GameEvent(GameEvent::GameStart(info)) => {
-                        Some(GameMsg::OnStartGame(info))
+                    WsResponse::MatchEvent(MatchEvent::GameStart { you }) => {
+                        Some(GameMsg::OnStartGame(you))
                     }
-                    WsResponse::GameEvent(GameEvent::UserPlay(action)) => {
+                    WsResponse::MatchEvent(MatchEvent::UserPlay(action)) => {
                         Some(GameMsg::OnUserPlay(action))
                     }
-                    WsResponse::GameEvent(GameEvent::GameEnd(info)) => {
-                        //info.reason
-                        Some(GameMsg::OnUserPlay(action))
+                    WsResponse::MatchEvent(MatchEvent::GameEnd(info)) => {
+                        Some(GameMsg::OnGameEnd(info))
+                    }
+                    WsResponse::MatchEvent(MatchEvent::MatchEnd(info)) => {
+                        Some(GameMsg::OnMatchEnd(info))
                     }
                     _ => None,
                 }
@@ -79,28 +86,11 @@ impl Component for GameView {
     fn update(&mut self, ctx: &Context<Self>, msg: GameMsg) -> bool {
         use GameMsg::*;
         match msg {
-            OnSyncMatch(match_state) => {
-                self.sync_match(match_state);
-                return true
-            }
-            OnStartGame(info) => {
-                self.on_start_game(info, ctx);
-                if let Some(mtch) = &mut self.mtch && self.game_status == GameStatus::NotStarted {
-                    mtch.new_game(info.you);
-                    true
-                } else {
-                    self.do_sync_match(ctx);
-                    false
-                }
-            }
-            OnUserPlay(action) => {
-                if let Some(mtch) = &mut self.mtch && mtch.update(action.action).is_ok() {
-                    true
-                } else {
-                    self.do_sync_match(ctx);
-                    false
-                }
-            }
+            OnSyncMatch(match_state) => self.on_sync_match(match_state),
+            OnStartGame(info) => self.on_start_game(info, ctx),
+            OnGameEnd(info) => self.on_game_end(info, ctx),
+            OnUserPlay(action) => self.on_user_play(action, ctx),
+            OnMatchEnd(info) => self.on_match_end(info, ctx),
             UserPlay(action) => {
                 let connection = ctx.link().connection();
                 spawn_local(async move {
@@ -124,57 +114,135 @@ impl Component for GameView {
             }
         }
         let Some(mtch) = &self.mtch else { return loader_html(); };
-        let Some(game_state) = &mtch.game() else { return loader_html() };
-
-        let send_pick = ctx
-            .link()
-            .callback(|hexo| GameMsg::UserPlay(Action::Pick { hexo }));
-        let send_place = ctx
-            .link()
-            .callback(|moved_hexo| GameMsg::UserPlay(Action::Place { hexo: moved_hexo }));
-        html! {
-            <div>
-            <TurnIndicator/>
-            {
-                match game_state.borrow().core().phase() {
-                    GamePhase::Pick => html!{
-                        <PickView state={game_state.clone()} send_pick={send_pick}/>
-                    },
-                    GamePhase::Place => html!{
-                        <PlaceView state={game_state.clone()} send_place={send_place}
-                        is_locked={false}/>
-                    },
-                    GamePhase::End => html!{
-                        <EndView state={game_state.clone()}/>
-                    }
-                }
+        match mtch.state() {
+            MatchInnerState::NotStarted => {
+                return loader_html();
             }
-            </div>
+            MatchInnerState::Ended { winner } => {
+                let info = MatchEndInfo {
+                    scores: *mtch.scores(),
+                    winner: *winner,
+                };
+                return html! {
+                    <MatchEndView {info} names={mtch.names()}/>
+                };
+            }
+            MatchInnerState::Playing(game_state) => self.game_playing_view(mtch, game_state, ctx),
         }
     }
 
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render {
-            self.do_sync_match(ctx);
+            do_sync_match(ctx);
         }
     }
 }
 
 impl GameView {
-    fn sync_match(&mut self, mtch: api::MatchState) {
+    fn on_sync_match(&mut self, mtch: api::MatchState) -> bool {
         self.mtch = Some(MatchState::from_api(mtch));
+        true
     }
 
-    fn do_sync_match(&self, ctx: &Context<Self>) {
-        let callback = ctx.link().callback(GameMsg::OnSyncMatch);
-        let connection = ctx.link().connection();
-        spawn_local(async move {
-            let resp = connection
-                .post_api::<SyncMatchApi>("/api/game/sync", ())
-                .await;
-            let Ok(result) = resp.log_err() else { return };
-            let Ok(match_state) = result.log_err() else { return };
-            callback.emit(match_state);
-        })
+    fn on_start_game(&mut self, me: Player, ctx: &Context<Self>) -> bool {
+        let Some(mtch) = self.match_mut_or_sync(ctx) else { return false };
+        is_ok_or_sync(mtch.update_new_game(me), ctx);
+        true
+    }
+
+    fn on_user_play(&mut self, action: UserPlay, ctx: &Context<Self>) -> bool {
+        let Some(mtch) = self.match_mut_or_sync(ctx) else { return false };
+        is_ok_or_sync(mtch.update_action(action), ctx);
+        true
+    }
+
+    fn on_game_end(&mut self, info: GameEndInfo, ctx: &Context<Self>) -> bool {
+        let Some(mtch) = self.match_mut_or_sync(ctx) else { return false };
+        is_ok_or_sync(mtch.update_game_end(info), ctx);
+        true
+    }
+
+    fn on_match_end(&mut self, info: MatchEndInfo, ctx: &Context<Self>) -> bool {
+        let Some(mtch) = self.match_mut_or_sync(ctx) else { return false };
+        is_ok_or_sync(mtch.update_match_end(info), ctx);
+        true
+    }
+
+    fn match_mut_or_sync(&mut self, ctx: &Context<Self>) -> Option<&mut MatchState> {
+        if let Some(mtch) = &mut self.mtch {
+            return Some(unsafe { &mut *(mtch as *const _ as *mut _) });
+        } else {
+            do_sync_match(ctx);
+            None
+        }
+    }
+
+    fn game_playing_view(
+        &self,
+        mtch: &MatchState,
+        game_state: &SharedGameState,
+        ctx: &Context<Self>,
+    ) -> Html {
+        let send_pick = ctx
+            .link()
+            .callback(|hexo| GameMsg::UserPlay(Action::Pick(hexo)));
+        let send_place = ctx
+            .link()
+            .callback(|moved_hexo| GameMsg::UserPlay(Action::Place(moved_hexo)));
+        let game_state_borrow = game_state.borrow();
+        let me = game_state_borrow.me();
+        let core_game_state = game_state_borrow.core();
+
+        html! {
+            <div>
+                <TurnIndicator {me}
+                    current_player={core_game_state.current_player()}
+                    player_names={mtch.names_ord_by_player()}
+                    scores={mtch.scores_ord_by_player()}/>
+                {
+                    match mtch.phase() {
+                        MatchPhase::GamePlaying => {
+                            match core_game_state.phase() {
+                                GamePhase::Pick => html!{
+                                    <PickView state={game_state.clone()} send_pick={send_pick}/>
+                                },
+                                GamePhase::Place | GamePhase::End => html!{
+                                    <PlaceView state={game_state.clone()} send_place={send_place}
+                                    is_locked={false}/>
+                                },
+                            }
+                        }
+                        MatchPhase::GameEnded => html!{
+                            <EndView state={game_state.clone()} names={mtch.names_ord_by_player()}/>
+                        },
+                        _ => html!(),
+                    }
+                }
+            </div>
+        }
+    }
+}
+
+fn do_sync_match(ctx: &Context<GameView>) {
+    let callback = ctx.link().callback(GameMsg::OnSyncMatch);
+    let connection = ctx.link().connection();
+    spawn_local(async move {
+        let resp = connection
+            .post_api::<SyncMatchApi>("/api/game/sync", ())
+            .await;
+        let Ok(result) = resp.log_err() else { return };
+        let Ok(match_state) = result.log_err() else { return };
+        callback.emit(match_state);
+    })
+}
+
+fn is_ok_or_sync(result: Result<(), MatchError>, ctx: &Context<GameView>) -> bool {
+    match result {
+        Ok(_) => true,
+        Err(MatchError::StateNotSynced) => {
+            do_sync_match(ctx);
+            false
+        }
+        _ => false,
     }
 }

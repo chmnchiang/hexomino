@@ -1,4 +1,4 @@
-use crate::{derive_api_data, Api, RoomId, JoinedRoom, MatchInfo, GameEvent, MatchId};
+use crate::{derive_api_data, Api, RoomId, JoinedRoom, MatchInfo, MatchEvent, MatchId};
 
 pub struct StartWsApi;
 impl Api for StartWsApi {
@@ -32,7 +32,7 @@ pub enum WsRequest {}
 pub enum WsResponse {
     UserStatusUpdate(UserStatus),
     RoomUpdate(JoinedRoom),
-    GameEvent(GameEvent),
+    MatchEvent(MatchEvent),
 }
 
 pub enum UserStatus {

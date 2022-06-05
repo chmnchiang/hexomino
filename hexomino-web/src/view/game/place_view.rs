@@ -1,7 +1,7 @@
 use hexomino_core::{Hexo, MovedHexo, Player};
 use yew::{html, Callback, Component, Context, Html, Properties};
 
-use super::turn_indicator::TurnIndicator;
+use super::{bottom_message::BottomMessage, turn_indicator::TurnIndicator};
 use crate::{
     game::SharedGameState,
     view::{
@@ -50,7 +50,7 @@ impl Component for PlaceView {
         match msg {
             Select(hexo) => {
                 if ctx.props().is_locked {
-                    return false
+                    return false;
                 }
                 self.state.selected_hexo = Some(hexo);
                 self.board_weak_link
@@ -83,32 +83,64 @@ impl Component for PlaceView {
 
         let place_hexo_callback = ctx.link().callback(PlaceAction::Placed);
 
-        let _me = state.me();
-        let player_hexos = core.inventory().hexos_of(current_player).iter();
-        let styled_hexos = if let Some(selected_hexo) = self.state.selected_hexo {
-            player_hexos
-                .map(|hexo| {
-                    (
-                        hexo,
-                        match (hexo == selected_hexo, current_player) {
-                            (false, _) => None,
-                            (true, Player::First) => Some("my-picked-hexo".to_string()),
-                            (true, Player::Second) => Some("their-picked-hexo".to_string()),
-                        },
-                    )
-                })
-                .collect::<Vec<StyledHexo>>()
-        } else {
-            player_hexos
-                .map(|hexo| (hexo, None))
-                .collect::<Vec<StyledHexo>>()
-        };
+        let me = state.me();
+        let my_hexos = core.inventory().hexos_of(me).iter();
+        let my_styled_hexos = my_hexos
+            .map(|hexo| {
+                (
+                    hexo,
+                    if Some(hexo) == self.state.selected_hexo {
+                        Some("my-picked-hexo".to_string())
+                    } else {
+                        None
+                    },
+                )
+            })
+            .collect::<Vec<StyledHexo>>();
+        let their_hexos = core.inventory().hexos_of(me.other()).iter();
+        let their_styled_hexos = their_hexos
+            .map(|hexo| (hexo, None))
+            .collect::<Vec<StyledHexo>>();
+
+        let my_turn = state.core().current_player() == Some(state.me());
 
         html! {
             <>
-                <TurnIndicator current_player={core.current_player()}/>
                 <BoardCanvas state={ctx.props().state.clone()} {shared_link} {place_hexo_callback}/>
-                <HexoTable {styled_hexos} on_hexo_click={select_onclick}/>
+                <HexoTable styled_hexos={my_styled_hexos} on_hexo_click={select_onclick} owner_is_me={Some(true)}/>
+                <div style="margin-top: 10px"></div>
+                <HexoTable styled_hexos={their_styled_hexos} owner_is_me={Some(false)}/>
+                <BottomMessage> {
+                    if my_turn {
+                        html! {
+                            <p style="font-size: 1.5rem">
+                                <b> {"Your turn: "} </b>
+                                <span> { "Try to place a hexomino on the board." } </span>
+                                <ol style="list-style-position: inside;">
+                                    <li> {"Select a hexomino to place by clicking on its block."} </li>
+                                    <li>
+                                        <span> {"Move your mouse to the position to be placed. Press"} </span>
+                                        <div style="display: inline-block; border: 2px solid #222222; border-radius: 5px;
+                                            margin-left: 5px; margin-right: 5px; padding-left: 3px; padding-right: 3px;
+                                            margin-bottom: 1px; color: #222222; letter-spacing: -1px;">{"Caps Lock"}</div>
+                                        <span> {"to flip the hexomino horizontally. Press"} </span>
+                                        <div style="display: inline-block; border: 2px solid #222222; border-radius: 5px;
+                                            margin-left: 5px; margin-right: 5px; padding-left: 3px; padding-right: 8px;
+                                            margin-top: 1px; color: #222222; letter-spacing: -1px;">{"⇧Shift"}</div>
+                                        <span> {"to rotate the hexomino counter-clockwise."} </span>
+                                    </li>
+                                </ol>
+                            </p>
+                        }
+                    } else {
+                        html!{
+                            <p style="font-size: 1.5rem">
+                                <b> {"Opponent's turn: "} </b>
+                                <span> { "Wait for your opponent to place a hexomino on the board" } </span>
+                            </p>
+                        }
+                    }
+                } </BottomMessage>
             </>
         }
     }

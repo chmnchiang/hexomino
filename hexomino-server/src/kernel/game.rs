@@ -1,8 +1,9 @@
-use std::{rc::Rc, sync::Arc};
+use std::{rc::Rc, sync::Arc, time::Duration};
 
+use anyhow::Context as _;
 use api::{
-    GameEndInfo, GameEndReason, GameEvent, MatchAction, MatchError, MatchId, UserId, UserPlay,
-    WsResponse, GameStartInfo,
+    GameEndReason, GameInnerState, MatchAction, MatchEndInfo, MatchError, MatchEvent, MatchId,
+    MatchInnerState, MatchWinner, UserId, UserPlay, WsResponse,
 };
 use getset::CopyGetters;
 use hexomino_core::{Action, Player, State as GameState};
@@ -57,6 +58,13 @@ struct MatchState {
     game: GameState,
     first_user_player: Player,
     prev_actions: Vec<Action>,
+    prev_end_state: Option<GameEndState>,
+}
+
+#[derive(Copy, Clone)]
+struct GameEndState {
+    winner: Player,
+    reason: GameEndReason,
 }
 
 struct PlayerState {
@@ -66,10 +74,10 @@ struct PlayerState {
 
 #[derive(PartialEq, Eq)]
 enum MatchPhase {
-    Starting,
-    Playing,
-    Break,
-    Ended,
+    GameNotStarted,
+    GamePlaying,
+    GameEnded,
+    MatchEnded,
 }
 
 impl MatchActor {
@@ -91,7 +99,7 @@ impl MatchActor {
         tracing::debug!("broadcast action");
         if let Some(action) = self.state.prev_actions.last().cloned() {
             for users in &self.users {
-                users.do_send(WsResponse::GameEvent(GameEvent::UserPlay(UserPlay {
+                users.do_send(WsResponse::MatchEvent(MatchEvent::UserPlay(UserPlay {
                     action,
                     idx: (self.state.prev_actions.len() - 1) as u32,
                 })));
@@ -99,22 +107,34 @@ impl MatchActor {
         }
     }
 
-    fn broadcast_game_end(&self, reason: GameEndReason, match_is_end: bool) {
+    fn broadcast_new_game(&self) {
+        let gen_resp = |player| WsResponse::MatchEvent(MatchEvent::GameStart { you: player });
+        self.users[0].do_send(gen_resp(self.state.first_user_player));
+        self.users[1].do_send(gen_resp(self.state.first_user_player.other()));
+    }
+
+    fn broadcast_game_end(&self) {
+        let end_state = self.state.prev_end_state.expect("game is not ended");
         for (idx, users) in self.users.iter().enumerate() {
-            let info = GameEndInfo {
-                reason,
-                scores: [0, 1].map(|idx| self.state.player_states[idx].score),
-                match_is_end,
+            let info = api::GameEndInfo {
+                end_state: api::GameEndState {
+                    winner: end_state.winner,
+                    reason: end_state.reason,
+                },
+                scores: self.state.scores(),
             }
             .as_perspective(idx);
-            users.do_send(WsResponse::GameEvent(GameEvent::GameEnd(info)));
+            users.do_send(WsResponse::MatchEvent(MatchEvent::GameEnd(info)));
         }
     }
 
-    fn broadcast_new_game(&self) {
-        let gen_resp = |player| WsResponse::GameEvent(GameEvent::GameStart(GameStartInfo { you: player }));
-        self.users[0].do_send(gen_resp(self.state.first_user_player));
-        self.users[1].do_send(gen_resp(self.state.first_user_player.other()));
+    fn broadcast_match_end(&self) {
+        let scores = self.state.scores();
+        for (idx, user) in self.users.iter().enumerate() {
+            let winner = self.state.winner_from_user(idx);
+            let info = MatchEndInfo { scores, winner }.as_perspective(idx);
+            user.do_send(WsResponse::MatchEvent(MatchEvent::MatchEnd(info)));
+        }
     }
 
     fn user_idx(&self, user_id: UserId) -> Option<usize> {
@@ -150,17 +170,27 @@ impl MatchActor {
         }
     }
 
-    fn user_win_game(&mut self, user_idx: usize, reason: GameEndReason, ctx: &Context<Self>) {
+    fn player_win_game(&mut self, player: Player, reason: GameEndReason, ctx: &Context<Self>) {
+        let user_idx = self.player_to_user_idx(player);
         let state = &mut self.state;
-        state.phase = MatchPhase::Break;
         let score = &mut state.player_states[user_idx].score;
         *score += 1;
         let match_is_end = *score > self.info.num_games / 2;
-        self.broadcast_game_end(reason, match_is_end);
+        state.phase = if match_is_end {
+            MatchPhase::MatchEnded
+        } else {
+            MatchPhase::GameEnded
+        };
+        self.state.prev_end_state = Some(GameEndState {
+            winner: player,
+            reason,
+        });
+        self.broadcast_game_end();
 
         if !match_is_end {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-            ctx.notify(StartNewGame);
+            ctx.notify_later(StartNewGame, Duration::from_secs(1));
+        } else {
+            ctx.notify_later(EndMatch, Duration::from_secs(1));
         }
     }
 }
@@ -181,6 +211,40 @@ impl Handler<SyncMatch> for MatchActor {
             self.check_all_ready(ctx);
         }
 
+        let match_state = match self.state.phase {
+            MatchPhase::GameNotStarted => MatchInnerState::NotStarted,
+            MatchPhase::GamePlaying => {
+                MatchInnerState::Playing(api::GameState::GamePlaying(GameInnerState {
+                    you: self
+                        .user_player(msg.user.id())
+                        .expect("already asserted user in game"),
+                    prev_actions: self.state.prev_actions.clone(),
+                }))
+            }
+            MatchPhase::GameEnded => {
+                let info = self
+                    .state
+                    .prev_end_state
+                    .expect("game ended but info is None");
+
+                MatchInnerState::Playing(api::GameState::GameEnded {
+                    game_state: GameInnerState {
+                        you: self
+                            .user_player(msg.user.id())
+                            .expect("already asserted user in game"),
+                        prev_actions: self.state.prev_actions.clone(),
+                    },
+                    end_state: api::GameEndState {
+                        winner: info.winner,
+                        reason: info.reason,
+                    },
+                })
+            }
+            MatchPhase::MatchEnded => MatchInnerState::Ended {
+                winner: self.state.winner_from_user(user_idx),
+            },
+        };
+
         Ok(api::MatchState {
             info: self.info.to_api(),
             game_idx: self.state.game_idx,
@@ -188,10 +252,7 @@ impl Handler<SyncMatch> for MatchActor {
                 self.state.player_states[0].score,
                 self.state.player_states[1].score,
             ],
-            you: self
-                .user_player(msg.user.id())
-                .expect("already asserted user in game"),
-            prev_actions: self.state.prev_actions.clone(),
+            state: match_state,
         }
         .as_perspective(user_idx))
     }
@@ -209,25 +270,18 @@ impl Handler<UserAction> for MatchActor {
         let player = self
             .user_player(msg.user.id())
             .ok_or(MatchError::NotInMatch)?;
-        let pid = player.id();
         match msg.action {
             MatchAction::Play(action) => {
-                if self.state.game.current_player() != Some(player) {
-                    return Err(MatchError::NotYourTurn.into());
-                }
-                self.state
-                    .game
-                    .play(action)
-                    .map_err(|err| MatchError::GameActionError(format!("{err}")))?;
-                self.state.prev_actions.push(action);
+                self.state.user_play(player, action)?;
                 self.broadcast_last_action();
 
+                // TODO: Test code. Delete me!!
+                self.state.game.set_winner(Player::First);
+
                 if let Some(player) = self.state.game.winner() {
-                    self.user_win_game(
-                        self.player_to_user_idx(player),
-                        GameEndReason::NoValidMove,
-                        ctx,
-                    );
+                    self.player_win_game(player, GameEndReason::NoValidMove, ctx);
+                } else {
+                    //panic!("how come??");
                 }
             }
         }
@@ -243,7 +297,10 @@ impl Handler<StartNewGame> for MatchActor {
     fn handle(&mut self, msg: StartNewGame, ctx: &Context<Self>) -> Self::Output {
         tracing::debug!("start new game...");
         let state = &mut self.state;
-        state.phase = MatchPhase::Playing;
+        if state.phase != MatchPhase::GameNotStarted && state.phase != MatchPhase::GameEnded {
+            return;
+        }
+        state.phase = MatchPhase::GamePlaying;
         state.game_idx += 1;
         state.game = GameState::new();
         state.first_user_player = if state.game_idx % 2 == 0 {
@@ -252,8 +309,22 @@ impl Handler<StartNewGame> for MatchActor {
             Player::Second
         };
         state.prev_actions = vec![];
+        state.prev_end_state = None;
+
+        // TODO: Test code. Delete me!
+        //state.fast_forward_to_place();
 
         self.broadcast_new_game();
+    }
+}
+
+struct EndMatch;
+
+impl Handler<EndMatch> for MatchActor {
+    type Output = ();
+
+    fn handle(&mut self, msg: EndMatch, ctx: &Context<Self>) -> Self::Output {
+        self.broadcast_match_end();
     }
 }
 
@@ -278,12 +349,50 @@ impl MatchInfo {
 impl MatchState {
     fn new() -> Self {
         Self {
-            phase: MatchPhase::Starting,
+            phase: MatchPhase::GameNotStarted,
             player_states: [PlayerState::new(), PlayerState::new()],
             game_idx: -1,
             game: GameState::new(),
             first_user_player: Player::First,
             prev_actions: vec![],
+            prev_end_state: None,
+        }
+    }
+
+    fn user_play(&mut self, player: Player, action: Action) -> Result<()> {
+        self.game
+            .play(player, action)
+            .map_err(|err| MatchError::GameActionError(format!("{err}")))?;
+        self.prev_actions.push(action);
+        Ok(())
+    }
+
+    fn scores(&self) -> [u32; 2] {
+        [0, 1].map(|idx| self.player_states[idx].score)
+    }
+
+    fn winner(&self) -> Option<usize> {
+        let scores = self.scores();
+        if scores[0] > scores[1] {
+            Some(0)
+        } else if scores[1] > scores[0] {
+            Some(1)
+        } else {
+            None
+        }
+    }
+
+    fn winner_from_user(&self, idx: usize) -> MatchWinner {
+        match self.winner() {
+            None => MatchWinner::Tie,
+            Some(jdx) if jdx == idx => MatchWinner::You,
+            _ => MatchWinner::They,
+        }
+    }
+
+    fn fast_forward_to_place(&mut self) {
+        for hexo in hexomino_core::Hexo::all_hexos() {
+            self.user_play(self.game.current_player().unwrap(), Action::Pick(hexo));
         }
     }
 }
@@ -326,6 +435,13 @@ impl AsPerspective for api::MatchInfo {
 }
 
 impl AsPerspective for api::GameEndInfo {
+    fn flip(mut self) -> Self {
+        self.scores.swap(0, 1);
+        self
+    }
+}
+
+impl AsPerspective for api::MatchEndInfo {
     fn flip(mut self) -> Self {
         self.scores.swap(0, 1);
         self

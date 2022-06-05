@@ -1,4 +1,4 @@
-use super::turn_indicator::TurnIndicator;
+use super::{turn_indicator::TurnIndicator, bottom_message::BottomMessage};
 use crate::{game::SharedGameState, view::game::hexo_table::HexoTable};
 use hexomino_core::{Hexo, Player};
 use yew::{html, Callback, Component, Context, Html, Properties};
@@ -21,8 +21,9 @@ impl Component for PickView {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let state = ctx.props().state.borrow();
-        //let core_state = &state.core_game_state;
 
+        let me = ctx.props().state.borrow().me();
+        let my_turn = state.core().current_player() == Some(me);
         let hexo_style_func = |hexo| {
             ctx.props()
                 .state
@@ -30,21 +31,39 @@ impl Component for PickView {
                 .core()
                 .inventory()
                 .owner_of(hexo)
-                .map(|player| match player {
-                    Player::First => "my-picked-hexo".to_string(),
-                    Player::Second => "their-picked-hexo".to_string(),
+                .map(|player| {
+                    if player == me {
+                        "my-picked-hexo"
+                    } else {
+                        "their-picked-hexo"
+                    }
+                    .to_string()
                 })
         };
         let styled_hexos = Hexo::all_hexos()
             .map(|hexo| (hexo, hexo_style_func(hexo)))
             .collect::<Vec<_>>();
         html! {
-            <>
-                //<TurnIndicator current_player={core_state.current_player()}
-                    //player_1_name={state.name_of(Player::First).to_string()}
-                    //player_2_name={state.name_of(Player::Second).to_string()}/>
+            <div class="block">
                 <HexoTable {styled_hexos} on_hexo_click={ctx.props().send_pick.clone()}/>
-            </>
+                <BottomMessage> {
+                    if my_turn {
+                        html! {
+                            <p style="font-size: 1.5rem">
+                                <b> {"Your turn: "} </b>
+                                <span> { "Pick a hexomino by clicking on its block" } </span>
+                            </p>
+                        }
+                    } else {
+                        html!{
+                            <p style="font-size: 1.5rem">
+                                <b> {"Opponent's turn: "} </b>
+                                <span> { "Wait for your opponent to pick a hexomino" } </span>
+                            </p>
+                        }
+                    }
+                } </BottomMessage>
+            </div>
         }
     }
 }

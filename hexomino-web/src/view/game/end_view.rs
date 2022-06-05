@@ -15,6 +15,8 @@ use super::board_renderer::{BoardRenderer, RenderConfig};
 #[derive(PartialEq, Properties)]
 pub struct EndViewProps {
     pub state: SharedGameState,
+    #[prop_or(["Player 1".to_string(), "Player 2".to_string()])]
+    pub names: [String; 2],
 }
 
 struct RenderState {
@@ -25,7 +27,8 @@ struct RenderState {
 #[function_component(EndView)]
 pub fn end_view(props: &EndViewProps) -> Html {
     let state = props.state.borrow();
-    let winner = state.core().winner().unwrap();
+    let end_state = state.end_state().clone().expect("game not ended");
+
     let canvas_ref = use_node_ref();
     let web_render_context = use_mut_ref(|| None);
     let render_func = {
@@ -80,15 +83,22 @@ pub fn end_view(props: &EndViewProps) -> Html {
             (),
         );
     }
-    let style = match winner {
-        Player::First => "my-foreground",
-        Player::Second => "their-foreground",
-    };
+    let winner = end_state.winner;
+    let i_won = state.me() == winner;
     html! {
         <>
             <div class="columns is-mobile is-centered">
                 <div class="column is-narrow">
-                    <h1 class={classes!("title", style)}>{ format!("{} Wins", state.name_of(winner)) }</h1>
+                    if i_won {
+                        <h1 class="title my-foreground">
+                            <span class="icon" style="margin-right: 10px;">
+                                <i class="fas fa-trophy"></i>
+                            </span>
+                            <span> { "You won this game" } </span>
+                        </h1>
+                    } else {
+                        <h1 class="title their-foreground">{ "Your opponent won this game" }</h1>
+                    }
                 </div>
             </div>
             <div class="columns is-centered">

@@ -4,11 +4,21 @@ use hexomino_core::Player;
 
 #[derive(Properties, PartialEq)]
 pub struct TurnIndicatorProps {
+    #[prop_or(Player::First)]
+    pub me: Player,
     pub current_player: Option<Player>,
     #[prop_or([0, 0])]
     pub scores: [u32; 2],
     #[prop_or(["Player 1".to_string(), "Player 2".to_string()])]
     pub player_names: [String; 2],
+}
+
+pub fn player_color_style(is_me: bool, opacity: f64) -> String {
+    if is_me {
+        format!("fill: rgba(30, 180, 0, {})", opacity)
+    } else {
+        format!("fill: rgba(180, 30, 0, {})", opacity)
+    }
 }
 
 #[function_component(TurnIndicator)]
@@ -31,7 +41,10 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
         HEIGHT,
         SCORE_LEN + MARGIN,
     );
-    let shape_score_2 = format!("M{} {} h{} v{} h{} Z", WIDTH, 0, -SCORE_LEN, HEIGHT, SCORE_LEN);
+    let shape_score_2 = format!(
+        "M{} {} h{} v{} h{} Z",
+        WIDTH, 0, -SCORE_LEN, HEIGHT, SCORE_LEN
+    );
     let shape_player_2 = format!(
         "M{} {} H{} l{} {} H{} Z",
         WIDTH - SCORE_LEN - MARGIN,
@@ -46,11 +59,11 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
         Some(Player::Second) => (0.5, 1.0),
         None => (0.5, 0.5),
     };
-    let player1_style = format!("fill: rgba(30, 180, 0, {})", player1_opacity);
-    let player2_style = format!("fill: rgba(180, 30, 0, {})", player2_opacity);
+    let player1_style = player_color_style(props.me == Player::First, player1_opacity);
+    let player2_style = player_color_style(props.me == Player::Second, player2_opacity);
     html! {
-        <div style="width: 100%">
-            <svg width="100%" viewBox={viewbox}>
+        <div style="width: 100%;">
+            <svg width="100%" style="min-height: 30px;" viewBox={viewbox}>
             <path d={shape_score_1} style={player1_style.clone()}/>
             <path d={shape_player_1} style={player1_style}/>
             <path d={shape_score_2} style={player2_style.clone()}/>

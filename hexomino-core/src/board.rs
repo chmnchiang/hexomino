@@ -3,7 +3,6 @@ use super::{
     hexo::{Hexo, MovedHexo, PlacedHexo},
     pos::Pos,
 };
-use anyhow::{ensure, Result};
 use itertools::Itertools;
 
 #[derive(Debug, Clone)]
@@ -69,11 +68,12 @@ impl Board {
         self.try_find_placement(hexo).is_some()
     }
 
-    pub(super) fn place(&mut self, hexo: PlacedHexo) -> Result<()> {
-        ensure!(
-            self.can_place(hexo.moved_hexo()),
-            "{hexo:?} can not be placed."
-        );
+    pub(super) fn place(&mut self, hexo: PlacedHexo) -> crate::state::Result<()> {
+        if !self.can_place(hexo.moved_hexo()) {
+            return Err(crate::Error::CannotPlaceHexo {
+                moved_hexo: *hexo.moved_hexo(),
+            });
+        }
         for point in hexo.moved_hexo().tiles() {
             self.mark_placed(point);
         }

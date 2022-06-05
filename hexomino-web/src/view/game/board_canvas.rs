@@ -219,7 +219,6 @@ impl Component for BoardCanvas {
         html! {
             <div>
                 <canvas ref={self.canvas.clone()} style="width: 100%; height: 60vh" {onmousemove} {onclick} {onmouseleave}/>
-                <p> {"<Shift> = Rotate, <CapsLock> = Flip"} </p>
             </div>
         }
     }

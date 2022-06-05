@@ -19,6 +19,24 @@ $player-they-color: rgb(192, 32, 0);
   background-color: $player-they-color !important;
 }
 
+.my-hexo-table-tag {
+  background-color: $player-me-color !important;
+  display: inline-block;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.their-hexo-table-tag {
+  color: #f0f0f0;
+  background-color: $player-they-color !important;
+  display: inline-block;
+  position: relative;
+  left: 100%;
+  padding-left: 4px;
+  padding-right: 4px;
+  transform: translateX(-100%);
+}
+
 ul.hexo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, 80px);
@@ -33,6 +51,12 @@ ul.hexo-grid {
 .hexo-block {
   width: 80px;
   height: 80px;
+}
+
+.hexo-table-wrapper {
+  border: 2px solid #333333;
+  padding: 10px;
+  background-color: #f0f0f0;
 }
 
 //.hexo-block {

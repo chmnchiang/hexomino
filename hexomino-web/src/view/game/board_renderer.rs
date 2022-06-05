@@ -23,7 +23,7 @@ pub struct RenderConfig {
     pub rhexo: Option<RHexo>,
 }
 
-const CANVAS_MARGIN: f64 = 20.0;
+const CANVAS_MARGIN: f64 = 15.0;
 const BLOCK_LENGTH: f64 = 30.0;
 const BLOCK_INNER_BORDER_WIDTH: f64 = 2.0;
 const BLOCK_INNER_BORDER_COLOR: Color = Color::grey8(0x60);
@@ -31,10 +31,10 @@ const BLOCK_OUTER_BORDER_WIDTH: f64 = 3.0;
 const BLOCK_OUTER_BORDER_COLOR: Color = Color::BLACK;
 const BLOCK_OUTER_BORDER_LAST_COLOR: Color = Color::rgb8(32, 32, 255);
 const BOARD_BORDER_WIDTH: f64 = 1.5;
-const P1_BLOCK_COLOR: Color = Color::rgb8(32, 192, 0);
-const P2_BLOCK_COLOR: Color = Color::rgb8(192, 32, 0);
-const P1_BLOCK_LAST_COLOR: Color = Color::rgb8(48, 240, 32);
-const P2_BLOCK_LAST_COLOR: Color = Color::rgb8(240, 48, 32);
+const ME_BLOCK_COLOR: Color = Color::rgb8(32, 192, 0);
+const THEY_BLOCK_COLOR: Color = Color::rgb8(192, 32, 0);
+const ME_BLOCK_LAST_COLOR: Color = Color::rgb8(48, 240, 32);
+const THEY_BLOCK_LAST_COLOR: Color = Color::rgb8(240, 48, 32);
 const INVALID_BLOCK_COLOR: Color = Color::rgb8(240, 240, 64);
 const DEFAULT_BLOCK_COLOR: Color = Color::GRAY;
 
@@ -46,19 +46,19 @@ fn center_of_mass(hexo: &Hexo) -> Vec2 {
     res / 6.0
 }
 
-fn player_to_color(player: Option<Player>) -> Color {
-    match player {
-        Some(Player::First) => P1_BLOCK_COLOR,
-        Some(Player::Second) => P2_BLOCK_COLOR,
-        None => DEFAULT_BLOCK_COLOR,
+fn color_of_hexo(is_me: bool) -> Color {
+    if is_me {
+        ME_BLOCK_COLOR
+    } else {
+        THEY_BLOCK_COLOR
     }
 }
 
-fn player_to_color_last(player: Option<Player>) -> Color {
-    match player {
-        Some(Player::First) => P1_BLOCK_LAST_COLOR,
-        Some(Player::Second) => P2_BLOCK_LAST_COLOR,
-        None => DEFAULT_BLOCK_COLOR,
+fn color_of_last_hexo(is_me: bool) -> Color {
+    if is_me {
+        ME_BLOCK_LAST_COLOR
+    } else {
+        THEY_BLOCK_LAST_COLOR
     }
 }
 
@@ -183,7 +183,7 @@ impl<'a> BoardRenderer<'a> {
                     this.render_placed_hexos(
                         &rhexo.move_to(Pos::ZERO).placed_by(Player::First),
                         false,
-                        );
+                    );
                 });
             }
         }
@@ -203,15 +203,16 @@ impl<'a> BoardRenderer<'a> {
     }
 
     fn render_placed_hexos(&mut self, placed_hexos: &PlacedHexo, is_last: bool) {
+        let me = self.config.game_view_state.borrow().me();
         let moved_hexo = placed_hexos.moved_hexo();
         for tile in moved_hexo.tiles() {
             let x = tile.x as f64 * BLOCK_LENGTH;
             let y = tile.y as f64 * BLOCK_LENGTH;
             let player = placed_hexos.player();
             let fill_color = if is_last {
-                player_to_color_last(Some(player))
+                color_of_last_hexo(me == player)
             } else {
-                player_to_color(Some(player))
+                color_of_hexo(me == player)
             };
             let fill = self.ctx.solid_brush(fill_color);
             self.render_block(Point::new(x, y), &fill);
@@ -235,12 +236,12 @@ impl<'a> BoardRenderer<'a> {
             let color = if !Board::in_bound(tile) || board.is_placed(tile) {
                 INVALID_BLOCK_COLOR
             } else {
-                player_to_color(Some(placed_hexos.player()))
+                color_of_last_hexo(true)
             };
             let fill = self.ctx.solid_brush(color);
             self.render_block(Point::new(x, y), &fill);
         }
-        let brush = &self.ctx.solid_brush(BLOCK_OUTER_BORDER_COLOR);
+        let brush = &self.ctx.solid_brush(BLOCK_OUTER_BORDER_LAST_COLOR);
         self.render_borders(moved_hexo.borders(), brush);
     }
 

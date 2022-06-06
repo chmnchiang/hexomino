@@ -13,7 +13,7 @@ use crate::result::ApiResult;
 
 use super::{
     actor::{Actor, Addr, Context, Handler},
-    user::{User, UserData},
+    user::{User, UserData, UserStatus},
 };
 
 type Result<T> = ApiResult<T, MatchError>;
@@ -188,9 +188,9 @@ impl MatchActor {
         self.broadcast_game_end();
 
         if !match_is_end {
-            ctx.notify_later(StartNewGame, Duration::from_secs(1));
+            ctx.notify_later(StartNewGame, Duration::from_secs(3));
         } else {
-            ctx.notify_later(EndMatch, Duration::from_secs(1));
+            ctx.notify_later(EndMatch, Duration::from_secs(3));
         }
     }
 }
@@ -276,7 +276,7 @@ impl Handler<UserAction> for MatchActor {
                 self.broadcast_last_action();
 
                 // TODO: Test code. Delete me!!
-                self.state.game.set_winner(Player::First);
+                //self.state.game.set_winner(Player::First);
 
                 if let Some(player) = self.state.game.winner() {
                     self.player_win_game(player, GameEndReason::NoValidMove, ctx);
@@ -325,6 +325,10 @@ impl Handler<EndMatch> for MatchActor {
 
     fn handle(&mut self, msg: EndMatch, ctx: &Context<Self>) -> Self::Output {
         self.broadcast_match_end();
+        let user_states = User::lock_both_user_states(self.users.each_ref());
+        for mut state in user_states {
+            state.status = UserStatus::Idle;
+        }
     }
 }
 
@@ -332,7 +336,7 @@ impl MatchInfo {
     fn new(users: &[User; 2]) -> Self {
         Self {
             id: MatchId(Uuid::new_v4()),
-            num_games: 3,
+            num_games: 1,
             user_data: users.each_ref().map(|u| u.to_api()),
         }
     }

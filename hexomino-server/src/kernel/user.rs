@@ -21,7 +21,7 @@ use futures::{
     FutureExt, SinkExt, StreamExt as _,
 };
 use getset::{CopyGetters, Getters};
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockWriteGuard};
 use stream_cancel::{StreamExt as _, TakeUntilIf, Trigger, Tripwire};
 use tokio::{spawn, sync::Mutex};
 use tracing::{debug, trace};
@@ -42,6 +42,22 @@ impl Eq for User {}
 impl PartialEq for User {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
+    }
+}
+
+impl User {
+    pub fn lock_both_user_states<'a>(users: [&'a User; 2]) -> [RwLockWriteGuard<'a, UserState>; 2] {
+        let u0 = users[0];
+        let u1 = users[1];
+        if u0.id() < u1.id() {
+            let s0 = u0.state().write();
+            let s1 = u1.state().write();
+            [s0, s1]
+        } else {
+            let s1 = u1.state().write();
+            let s0 = u0.state().write();
+            [s0, s1]
+        }
     }
 }
 

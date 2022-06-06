@@ -251,7 +251,7 @@ impl Room {
     fn start_game(&self) {
         tracing::debug!("game start...");
         let users = [&self.users[0].user, &self.users[1].user];
-        let user_states = lock_both_user_states(users);
+        let user_states = User::lock_both_user_states(users);
         let game = MatchActor::new(users.map(|x| x.clone())).start();
 
         for mut state in user_states {
@@ -302,16 +302,3 @@ impl RoomUser {
     }
 }
 
-fn lock_both_user_states<'a>(users: [&'a User; 2]) -> [RwLockWriteGuard<'a, UserState>; 2] {
-    let u0 = users[0];
-    let u1 = users[1];
-    if u0.id() < u1.id() {
-        let s0 = u0.state().write();
-        let s1 = u1.state().write();
-        [s0, s1]
-    } else {
-        let s1 = u1.state().write();
-        let s0 = u0.state().write();
-        [s0, s1]
-    }
-}

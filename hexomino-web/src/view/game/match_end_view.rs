@@ -1,5 +1,7 @@
 use api::{MatchEndInfo, MatchWinner};
-use yew::{function_component, html, use_state, Callback, Children, Properties};
+use yew::{function_component, html, use_state, Callback, Children, Properties, use_context};
+
+use crate::{context::MainContext, view::Route};
 
 #[derive(Properties)]
 pub struct MatchEndProps {
@@ -17,6 +19,12 @@ impl PartialEq for MatchEndProps {
 pub fn match_end_view(props: &MatchEndProps) -> Html {
     let names = &props.names;
     let MatchEndInfo { scores, winner } = props.info;
+    let context = use_context::<MainContext>().expect("no main context found");
+
+    let return_onclick = Callback::from(move |_| {
+        context.main().go(Route::Rooms);
+    });
+
     html! {
         <>
             <div class="columns is-centered">
@@ -71,6 +79,16 @@ pub fn match_end_view(props: &MatchEndProps) -> Html {
                         },
                     }
                 }
+                </div>
+            </div>
+            <div class="columns is-centered">
+                <div class="column is-one-quarter" style="text-align: center">
+                    <button class="button is-success" onclick={return_onclick}>
+                        <span class="icon">
+                            <i class="fa-solid fa-arrow-rotate-left"></i>
+                        </span>
+                        <span>{"Return to lobby"}</span>
+                    </button>
                 </div>
             </div>
         </>

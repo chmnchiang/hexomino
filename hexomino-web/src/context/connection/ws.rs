@@ -17,7 +17,7 @@ use gloo::{
     net::websocket::{futures::WebSocket, Message},
     utils::document,
 };
-use log::debug;
+
 use wasm_bindgen_futures::spawn_local;
 use yew::Callback;
 
@@ -118,7 +118,6 @@ impl WsConnection {
     }
 
     pub async fn send(self: Rc<Self>, msg: api::WsRequest) -> Result<()> {
-        debug!("send = {:?}", msg);
         let connection = self
             .inner
             .borrow()
@@ -147,6 +146,7 @@ fn spawn_receive_loop(
     error_callback: Callback<ConnectionError>,
 ) {
     spawn_local(async move {
+        log::debug!("Websocket receive loop started.");
         loop {
             let receiver = &mut receiver;
             let result: Result<_> = (|| async move {
@@ -175,8 +175,7 @@ fn spawn_receive_loop(
         }
         // TODO: gloo's websocket closure does not work well when the Websocket struct is dropped.
         // we have no choice to allow some leak memory here.
-        mem::forget(receiver.into_inner());
-        debug!("end receive loop");
+        log::debug!("Websocket receive loop ended.");
     })
 }
 
@@ -225,7 +224,6 @@ struct WsListenerId(usize);
 impl WsMessageBus {
     pub fn register(self: Rc<Self>, callback: WsCallback) -> WsListenerToken {
         let id = WsListenerId::new();
-        debug!("register");
         self.listeners.borrow_mut().push((id, callback));
         WsListenerToken {
             id,
@@ -241,7 +239,6 @@ impl WsMessageBus {
     }
 
     pub fn broadcast(&self, msg: WsResult) {
-        debug!("broadcast");
         let msg = Rc::new(msg);
         let listeners = {
             let listeners = self.listeners.borrow().clone();
@@ -250,7 +247,6 @@ impl WsMessageBus {
         for (_, listener) in listeners {
             listener.emit(msg.clone())
         }
-        debug!("broadcast done");
     }
 }
 

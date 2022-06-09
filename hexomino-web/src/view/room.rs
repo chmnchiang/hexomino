@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use api::{JoinedRoom, RoomActionApi, RoomActionRequest, RoomId, RoomUser, WsResponse, WsResult, LeaveRoomApi};
 use wasm_bindgen_futures::spawn_local;
-use yew::{classes, html, Component, Context, Html, Properties};
+use yew::{html, Component, Context, Html};
 
 use crate::{
     context::{connection::ws::WsListenerToken, ScopeExt},

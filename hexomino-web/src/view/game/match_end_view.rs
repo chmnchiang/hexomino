@@ -1,5 +1,5 @@
 use api::{MatchEndInfo, MatchWinner};
-use yew::{function_component, html, use_state, Callback, Children, Properties, use_context};
+use yew::{function_component, html, Callback, Properties, use_context};
 
 use crate::{context::MainContext, view::Route};
 
@@ -10,7 +10,7 @@ pub struct MatchEndProps {
 }
 
 impl PartialEq for MatchEndProps {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(&self, _other: &Self) -> bool {
         true
     }
 }
@@ -69,10 +69,14 @@ pub fn match_end_view(props: &MatchEndProps) -> Html {
                 {
                     match winner {
                         MatchWinner::You => html! {
-                            <h2 class="title is-3 my-foreground"> { format!("The winner is {} (You).", names[0].clone()) } </h2>
+                            <h2 class="title is-3 my-foreground"> {
+                                format!("The winner is {} (You).", names[0].clone())
+                            } </h2>
                         },
                         MatchWinner::They => html! {
-                            <h2 class="title is-3 their-foreground"> { format!("The winner is {}.", names[1].clone()) } </h2>
+                            <h2 class="title is-3 their-foreground"> {
+                                format!("The winner is {}.", names[1].clone())
+                            } </h2>
                         },
                         MatchWinner::Tie => html! {
                             <h2 class="title is-3"> { "It's a tie!" } </h2>

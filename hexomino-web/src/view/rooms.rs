@@ -1,7 +1,7 @@
 use api::{CreateRoomApi, ListRoomsApi, JoinRoomApi};
 use gloo::timers::callback::Interval;
 use itertools::Itertools;
-use log::debug;
+
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, html::Scope, Component, Context, Html};
 
@@ -41,7 +41,6 @@ impl Component for RoomsView {
         use RoomsMsg::*;
         match msg {
             OnReceiveRooms(rooms) => {
-                log::debug!("receive rooms");
                 self.rooms = rooms;
                 true
             }
@@ -72,7 +71,6 @@ impl Component for RoomsView {
                         let Ok(resp) = resp.log_err() else { return };
                         let Ok(()) = resp.log_err() else { return };
                         link.send_message(RoomsMsg::UpdateRooms);
-                        debug!("join room = {}", room_id);
                     })
                 };
                 let id_str = format!("{}", room_id.0);
@@ -95,9 +93,8 @@ impl Component for RoomsView {
                     .post_api::<CreateRoomApi>("/api/room/create", ())
                     .await;
                 let Ok(resp) = resp.log_err().ignore_err() else { return };
-                let Ok(room_id) = resp.log_err().ignore_err() else { return };
+                let Ok(_room_id) = resp.log_err().ignore_err() else { return };
                 link.send_message(RoomsMsg::UpdateRooms);
-                debug!("room_id = {room_id}")
             });
         };
         html! {

@@ -1,5 +1,5 @@
-use parking_lot::Mutex;
-use std::{collections::VecDeque, future::Future, sync::Arc, time::Duration};
+
+use std::{future::Future, time::Duration};
 use tokio::{
     select, spawn,
     sync::{
@@ -80,7 +80,7 @@ impl<A: Actor> Addr<A> {
     }
 
     #[allow(dead_code)]
-    pub fn do_send<M>(&self, msg: M)
+    pub fn do_send<M>(&self, _msg: M)
     where
         A: Handler<M>,
         M: Send + 'static,
@@ -125,7 +125,7 @@ impl<A: Actor> Context<A> {
     {
         let inner_sender = self.inner_sender.clone();
         spawn(async move {
-            let _ = sleep(after).await;
+            sleep(after).await;
             let _ = inner_sender.send(FastMsg::Msg(Box::new(MsgNoReturnWrap(msg))));
         });
     }

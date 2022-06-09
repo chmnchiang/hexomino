@@ -1,11 +1,9 @@
-use std::{rc::Rc, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration, cmp::Ordering};
 
-use anyhow::Context as _;
 use api::{
     GameEndReason, GameInnerState, MatchAction, MatchEndInfo, MatchError, MatchEvent, MatchId,
     MatchInnerState, MatchWinner, UserId, UserPlay, WsResponse,
 };
-use getset::CopyGetters;
 use hexomino_core::{Action, Player, State as GameState};
 use uuid::Uuid;
 
@@ -13,16 +11,14 @@ use crate::result::ApiResult;
 
 use super::{
     actor::{Actor, Addr, Context, Handler},
-    user::{User, UserData, UserStatus},
+    user::{User, UserStatus},
 };
 
 type Result<T> = ApiResult<T, MatchError>;
 
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
-#[derive(CopyGetters)]
 pub struct MatchHandle {
-    #[getset(get = "pub")]
     info: Arc<MatchInfo>,
     #[derivative(Debug = "ignore")]
     addr: Addr<MatchActor>,
@@ -35,6 +31,9 @@ impl MatchHandle {
     pub async fn sync_match(&self, user: User) -> Result<api::MatchState> {
         self.addr.send(SyncMatch { user }).await
     }
+    pub fn id(&self) -> MatchId {
+        self.info.id
+    }
 }
 
 // TODO: derive Debug for state
@@ -45,7 +44,7 @@ pub struct MatchActor {
 }
 
 #[derive(Debug)]
-struct MatchInfo {
+pub struct MatchInfo {
     id: MatchId,
     num_games: u32,
     user_data: [api::User; 2],
@@ -294,7 +293,7 @@ struct StartNewGame;
 impl Handler<StartNewGame> for MatchActor {
     type Output = ();
 
-    fn handle(&mut self, msg: StartNewGame, ctx: &Context<Self>) -> Self::Output {
+    fn handle(&mut self, _msg: StartNewGame, _ctx: &Context<Self>) -> Self::Output {
         tracing::debug!("start new game...");
         let state = &mut self.state;
         if state.phase != MatchPhase::GameNotStarted && state.phase != MatchPhase::GameEnded {
@@ -323,7 +322,7 @@ struct EndMatch;
 impl Handler<EndMatch> for MatchActor {
     type Output = ();
 
-    fn handle(&mut self, msg: EndMatch, ctx: &Context<Self>) -> Self::Output {
+    fn handle(&mut self, _msg: EndMatch, _ctx: &Context<Self>) -> Self::Output {
         self.broadcast_match_end();
         let user_states = User::lock_both_user_states(self.users.each_ref());
         for mut state in user_states {
@@ -377,12 +376,10 @@ impl MatchState {
 
     fn winner(&self) -> Option<usize> {
         let scores = self.scores();
-        if scores[0] > scores[1] {
-            Some(0)
-        } else if scores[1] > scores[0] {
-            Some(1)
-        } else {
-            None
+        match scores[0].cmp(&scores[1]) {
+            Ordering::Greater => Some(0),
+            Ordering::Less => Some(0),
+            Ordering::Equal => None,
         }
     }
 
@@ -394,9 +391,10 @@ impl MatchState {
         }
     }
 
+    #[allow(dead_code)]
     fn fast_forward_to_place(&mut self) {
         for hexo in hexomino_core::Hexo::all_hexos() {
-            self.user_play(self.game.current_player().unwrap(), Action::Pick(hexo));
+            let _ = self.user_play(self.game.current_player().unwrap(), Action::Pick(hexo));
         }
     }
 }

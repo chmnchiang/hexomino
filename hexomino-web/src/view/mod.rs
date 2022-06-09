@@ -1,19 +1,14 @@
 use std::rc::Rc;
 
-use api::{MatchId, RoomId, WsResult, UserStatus};
-use log::{debug, error, info};
+use api::{UserStatus, WsResult};
 use wasm_bindgen_futures::spawn_local;
 use yew::{
-    function_component, html, html::Scope, Callback, Component, Context, ContextProvider, Html,
-    Properties,
+    function_component, html, Callback, Component, Context, ContextProvider, Html, Properties,
 };
 
-use crate::{
-    context::{
-        connection::{ws::WsListenerToken, ConnectionError, ConnectionStatus},
-        MainContext, ScopeExt,
-    },
-    //game::GameMode,
+use crate::context::{
+    connection::{ws::WsListenerToken, ConnectionError, ConnectionStatus},
+    MainContext, ScopeExt,
 };
 
 use self::{
@@ -23,7 +18,6 @@ use self::{
 
 mod game;
 mod login_view;
-//mod menu;
 mod room;
 mod rooms;
 mod shared_link;
@@ -56,7 +50,7 @@ pub enum ReconnectStatus {
     None,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Route {
     Login,
     Rooms,
@@ -85,9 +79,11 @@ impl Component for MainView {
 
     fn create(ctx: &Context<Self>) -> Self {
         let connection_error_callback = ctx.link().callback(MainMsg::OnConnectionError);
-        let main_callback = ctx.link().callback(|m| m);
-        let (context, _) = ctx.link().context::<MainContext>(Callback::noop()).unwrap();
-        context.init_with(connection_error_callback, main_callback);
+        let (context, _) = ctx
+            .link()
+            .context::<MainContext>(Callback::noop())
+            .expect("cannot get main context");
+        context.init_with(connection_error_callback, ctx.link().callback(|m| m));
         let connection = context.connection();
         let status = connection.status();
         Self {
@@ -103,22 +99,22 @@ impl Component for MainView {
         use MainMsg::*;
         match msg {
             OnLoginOk => {
-                log::info!("login ok");
+                log::debug!("Login completed.");
                 self.connect_ws(ctx);
                 false
             }
             OnWsConnected => {
-                log::info!("websocket connected");
+                log::info!("Websocket connected.");
                 ctx.link().main().go(Route::Rooms);
                 true
             }
             OnWsRecv(resp) => {
-                log::debug!("get resp = {:?}", resp);
+                log::debug!("Get websocket message: {:?}", resp);
                 self.receive_ws_message(ctx, &*resp);
                 true
             }
             OnConnectionError(err) => {
-                error!("connection error: {err}");
+                log::error!("Connection error: {err}");
                 match err {
                     ConnectionError::Unauthorized => self.logout(ctx),
                     ConnectionError::WsConnectionClose => {
@@ -129,6 +125,7 @@ impl Component for MainView {
                 true
             }
             OnRouteChange(route) => {
+                log::debug!("Route changed to {:?}", route);
                 self.route = route;
                 true
             }
@@ -144,20 +141,10 @@ impl Component for MainView {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        //let on_choose = ctx.link().callback(MainMsg::StartGame);
-        //let on_choose = ctx.link().callback();
-        //let inner = match self.page {
-        ////Page::Menu => html! { <MenuView {on_choose}/> },
-        //Page::Game => html! { <GameView game_mode={self.game_mode.unwrap()}/> },
-        //};
         let modal_logout_cb = ctx.link().callback(|_| MainMsg::Logout);
         let modal_reconnect_cb = ctx.link().callback(|_| MainMsg::ReconnectWs);
         html! {
             <main>
-                //if let Route::Login = self.route {
-                //} else {
-                    //{ self.navbar_view() }
-                //}
                 { self.route_view(ctx) }
                 if self.show_reconnect {
                     <WsReconnectModal logout_cb={modal_logout_cb} reconnect_cb={modal_reconnect_cb}/>
@@ -242,12 +229,10 @@ impl MainView {
     }
 
     fn connect_ws(&mut self, ctx: &Context<Self>) {
-            debug!("call connect");
         let context = self.context.clone();
         let link = ctx.link().clone();
         self.show_reconnect = false;
         spawn_local(async move {
-            debug!("connecting");
             let result = context.connection().connect_ws().await;
             match result {
                 Ok(()) => link.send_message(MainMsg::OnWsConnected),
@@ -268,18 +253,15 @@ impl MainView {
 
     fn receive_ws_message(&self, ctx: &Context<Self>, msg: &WsResult) {
         use api::WsResponse::*;
-        match msg {
-            UserStatusUpdate(status) => {
-                let next_route = match status {
-                    UserStatus::Idle => Some(Route::Rooms),
-                    UserStatus::InRoom => Some(Route::Room),
-                    UserStatus::InGame => Some(Route::Game),
-                };
-                if let Some(next_route) = next_route {
-                    ctx.link().main().go(next_route);
-                }
+        if let UserStatusUpdate(status) = msg {
+            let next_route = match status {
+                UserStatus::Idle => Some(Route::Rooms),
+                UserStatus::InRoom => Some(Route::Room),
+                UserStatus::InGame => Some(Route::Game),
+            };
+            if let Some(next_route) = next_route {
+                ctx.link().main().go(next_route);
             }
-            _ => (),
         }
     }
 }

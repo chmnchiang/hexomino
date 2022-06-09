@@ -64,8 +64,8 @@ impl Kernel {
         KERNEL.get().expect("kernel is not initialized")
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn new_connection(&self, mut ws: WebSocket) {
-        debug!("new connection");
         let result = authorize_ws(&mut ws).await;
         match result {
             Ok(claims) => self.user_pool.user_ws_connect(UserId(claims.id), ws).await,
@@ -78,7 +78,6 @@ impl Kernel {
     pub async fn get_user(&self, user_id: UserId) -> Option<User> {
         self.user_pool.get(user_id)
     }
-
     pub async fn get_room(&self, user: User) -> ApiResult<JoinedRoom, RoomError> {
         self.room_manager.get_joined_room(user).await
     }
@@ -92,7 +91,6 @@ impl Kernel {
         self.room_manager.leave_room(user).await
     }
     pub async fn create_room(&self, user: User) -> ApiResult<RoomId, RoomError> {
-        tracing::debug!("creating room");
         self.room_manager.create_room(user).await
     }
     pub async fn room_action(&self, user: User, action: RoomAction) -> ApiResult<(), RoomError> {
@@ -174,7 +172,7 @@ async fn authorize_ws(ws: &mut WebSocket) -> Result<Claims, StartWsError> {
     let result = recv_future.await.map_err(|_| Timeout)?;
     let result = result.ok_or(InitialHandshakeFailed)?;
     let result = result.map_err(|e| {
-        error!("ws receive error = {}", e);
+        error!("received error when authorizing websocket: {}", e);
         InternalError
     })?;
     if let Message::Binary(token) = result {

@@ -37,6 +37,8 @@ const ME_BLOCK_LAST_COLOR: Color = Color::rgb8(48, 240, 32);
 const THEY_BLOCK_LAST_COLOR: Color = Color::rgb8(240, 48, 32);
 const INVALID_BLOCK_COLOR: Color = Color::rgb8(240, 240, 64);
 const DEFAULT_BLOCK_COLOR: Color = Color::GRAY;
+const BORDER_COLOR: Color = Color::grey8(30);
+const BACKGROUND_COLOR: Color = Color::grey8(240);
 
 fn center_of_mass(hexo: &Hexo) -> Vec2 {
     let mut res = Vec2::ZERO;
@@ -96,7 +98,7 @@ impl<'a> BoardRenderer<'a> {
     }
 
     pub fn clear(&mut self) {
-        self.ctx.clear(None, Color::grey8(240));
+        self.ctx.clear(None, BACKGROUND_COLOR);
     }
 
     pub fn render(&mut self) {
@@ -121,7 +123,7 @@ impl<'a> BoardRenderer<'a> {
 
     fn render_board_tiles(&mut self) {
         // Render COLS x ROWS
-        let border_brush = self.ctx.solid_brush(Color::grey8(30));
+        let border_brush = self.ctx.solid_brush(BORDER_COLOR);
         let fill_brush = self.ctx.solid_brush(Color::WHITE);
         self.ctx.fill(
             Rect::new(

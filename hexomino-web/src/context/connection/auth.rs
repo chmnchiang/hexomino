@@ -1,11 +1,10 @@
 use std::{cell::RefCell, rc::Rc};
 
-use api::{LoginRequest, LoginResponse, User, UserId, RefreshTokenRequest, RefreshTokenResponse, AuthResponse};
+use api::{LoginRequest, LoginResponse, User, RefreshTokenResponse, AuthResponse};
 use gloo::{
     net::http::Request,
     storage::{errors::StorageError, LocalStorage, Storage},
 };
-use serde::{Deserialize, Serialize};
 
 use crate::util::ResultExt;
 
@@ -87,7 +86,7 @@ impl Auth {
 const TOKEN_SAVE_KEY: &str = "auth_token";
 
 fn save_token(token: &str) {
-    if let Err(err) = LocalStorage::set(TOKEN_SAVE_KEY, token.clone()) {
+    if let Err(err) = LocalStorage::set(TOKEN_SAVE_KEY, token) {
         log::error!("failed to store auth context: {}", err);
     }
 }

@@ -29,12 +29,12 @@ pub fn hexo_table(props: &HexoTableProps) -> Html {
 
         chunk.map(|hexo| html!{
             <div class="square-block hexo-block"> {
-                    match hexo {
-                        Some((hexo, style)) => html!{
-                            <HexoSvg hexo={*hexo} style={style.clone()} onclick={onclick.clone()}/>
-                        },
-                        None => html!{},
-                    }
+                match hexo {
+                    Some((hexo, style)) => html!{
+                        <HexoSvg hexo={*hexo} style={style.clone()} onclick={onclick.clone()}/>
+                    },
+                    None => html!{},
+                }
             } </div>
         }).collect::<Html>()
     }

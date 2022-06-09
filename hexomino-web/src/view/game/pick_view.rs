@@ -1,6 +1,6 @@
-use super::{turn_indicator::TurnIndicator, bottom_message::BottomMessage};
+use super::{bottom_message::BottomMessage};
 use crate::{game::SharedGameState, view::game::hexo_table::HexoTable};
-use hexomino_core::{Hexo, Player};
+use hexomino_core::{Hexo};
 use yew::{html, Callback, Component, Context, Html, Properties};
 
 #[derive(Properties, PartialEq)]

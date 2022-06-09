@@ -1,4 +1,4 @@
-use crate::{derive_api_data, Api, RoomId, JoinedRoom, MatchInfo, MatchEvent, MatchId};
+use crate::{derive_api_data, Api, JoinedRoom, MatchEvent};
 
 pub struct StartWsApi;
 impl Api for StartWsApi {

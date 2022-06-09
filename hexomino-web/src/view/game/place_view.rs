@@ -1,7 +1,7 @@
-use hexomino_core::{Hexo, MovedHexo, Player};
+use hexomino_core::{Hexo, MovedHexo};
 use yew::{html, Callback, Component, Context, Html, Properties};
 
-use super::{bottom_message::BottomMessage, turn_indicator::TurnIndicator};
+use super::{bottom_message::BottomMessage};
 use crate::{
     game::SharedGameState,
     view::{
@@ -17,7 +17,6 @@ use crate::{
 pub struct PlaceViewProps {
     pub state: SharedGameState,
     pub send_place: Callback<MovedHexo>,
-    pub is_locked: bool,
 }
 
 #[derive(Debug, Default)]
@@ -49,9 +48,6 @@ impl Component for PlaceView {
         use PlaceAction::*;
         match msg {
             Select(hexo) => {
-                if ctx.props().is_locked {
-                    return false;
-                }
                 self.state.selected_hexo = Some(hexo);
                 self.board_weak_link
                     .upgrade()
@@ -74,7 +70,7 @@ impl Component for PlaceView {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let state = ctx.props().state.borrow();
         let core = state.core();
-        let Some(current_player) = core.current_player()
+        let Some(_current_player) = core.current_player()
             else { return html!() };
         let select_onclick = ctx.link().callback(PlaceAction::Select);
         let shared_link = SharedLink::<BoardCanvas>::new();

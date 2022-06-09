@@ -31,6 +31,7 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
     const MARGIN: i32 = 10;
     const FONT_SIZE: i32 = HEIGHT * 4 / 5;
     const FONT_PADDING: i32 = 20;
+
     let viewbox = format!("{} {} {} {}", 0, 0, WIDTH, HEIGHT);
     let shape_score_1 = format!("M0 0 h{} v{} h{} Z", SCORE_LEN, HEIGHT, -SCORE_LEN);
     let shape_player_1 = format!(

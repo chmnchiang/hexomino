@@ -6,9 +6,9 @@ use std::{
     },
 };
 
-use api::{MatchInfo, RoomAction, RoomError, RoomId, UserId, WsResponse};
+use api::{RoomAction, RoomError, RoomId, UserId, WsResponse};
 use itertools::Itertools;
-use parking_lot::{RwLock, RwLockWriteGuard, MutexGuard, RwLockReadGuard};
+use parking_lot::{RwLock};
 
 use crate::{
     kernel::{user::UserStatus, User},
@@ -18,7 +18,6 @@ use crate::{
 use super::{
     actor::{Actor, Addr, Context, Handler},
     game::MatchActor,
-    user::UserState,
 };
 
 type Result<T> = ApiResult<T, RoomError>;
@@ -71,14 +70,16 @@ pub struct Room {
 
 impl Actor for RoomManager {}
 
+#[derive(Debug)]
 struct CreateRoom {
     user: User,
 }
 
 impl Handler<CreateRoom> for RoomManager {
     type Output = Result<RoomId>;
+
+    #[tracing::instrument(skip(self, _ctx))]
     fn handle(&mut self, msg: CreateRoom, _ctx: &Context<Self>) -> Self::Output {
-        tracing::debug!("handling creating room");
         let user = msg.user;
         let user_clone = user.clone();
         let mut user_state = user.state().write();
@@ -97,6 +98,7 @@ impl Handler<CreateRoom> for RoomManager {
     }
 }
 
+#[derive(Debug)]
 struct JoinRoom {
     user: User,
     room_id: RoomId,
@@ -104,6 +106,8 @@ struct JoinRoom {
 
 impl Handler<JoinRoom> for RoomManager {
     type Output = Result<()>;
+
+    #[tracing::instrument(skip(self, _ctx))]
     fn handle(&mut self, msg: JoinRoom, _ctx: &Context<Self>) -> Self::Output {
         let mut user_state = msg.user.state().write();
         let UserStatus::Idle = user_state.status else { return Err(RoomError::UserBusy)? };
@@ -120,12 +124,15 @@ impl Handler<JoinRoom> for RoomManager {
     }
 }
 
+#[derive(Debug)]
 struct LeaveRoom {
     user: User,
 }
 
 impl Handler<LeaveRoom> for RoomManager {
     type Output = Result<()>;
+
+    #[tracing::instrument(skip(self, _ctx))]
     fn handle(&mut self, msg: LeaveRoom, _ctx: &Context<Self>) -> Self::Output {
         let user_id = msg.user.id();
         let mut user_state = msg.user.state().write();
@@ -249,10 +256,10 @@ impl Room {
     }
 
     fn start_game(&self) {
-        tracing::debug!("game start...");
         let users = [&self.users[0].user, &self.users[1].user];
         let user_states = User::lock_both_user_states(users);
         let game = MatchActor::new(users.map(|x| x.clone())).start();
+        tracing::info!("game start: id = {}", game.id());
 
         for mut state in user_states {
             state.status = UserStatus::InGame(game.clone());

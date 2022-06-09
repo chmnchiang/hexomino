@@ -22,11 +22,7 @@ pub fn bottom_message(props: &BottomMessageProps) -> Html {
                     <article class="message is-info">
                         <div class="message-body">
                             <div style="display: flex; width: 100%">
-                                <div style="flex: 1;">
-                                {
-                                    for props.children.iter()
-                                }
-                                </div>
+                                <div style="flex: 1;">{ for props.children.iter() }</div>
                                 <div style="display: flex; width: 40px; align-items: center;">
                                 <button class="button is-info" onclick={collapse_onclick.clone()}>
                                     <span class="icon is-small">

@@ -6,7 +6,6 @@ use gloo::{
     utils::{document, window},
 };
 use hexomino_core::{Board, Hexo, MovedHexo, RHexo, Transform};
-use log::{debug, error};
 use piet::kurbo::Point;
 use piet_web::WebRenderContext;
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
@@ -107,7 +106,7 @@ impl Component for BoardCanvas {
         use BoardMsg::*;
 
         let Some(ref web_render_context) = self.web_render_context else {
-            debug!("web_render_context is not ready");
+            log::error!("web_render_context is not ready");
             return false;
         };
 
@@ -118,7 +117,7 @@ impl Component for BoardCanvas {
                 }
                 MouseMoved(point) => {
                     let Some(point) = self.relative_mouse_point(point) else {
-                        error!("can't get relative mouse position");
+                        log::error!("can't get relative mouse position");
                         return false;
                     };
                     self.render_state.mouse_point = Some(point);

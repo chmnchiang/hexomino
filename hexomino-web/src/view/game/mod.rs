@@ -1,17 +1,17 @@
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
 
 use api::{
-    GameEndInfo, MatchAction, MatchActionApi, MatchEndInfo, MatchEvent, MatchInfo, SyncMatchApi,
-    UserPlay, WsResponse, WsResult,
+    GameEndInfo, MatchAction, MatchActionApi, MatchEndInfo, MatchEvent, SyncMatchApi, UserPlay,
+    WsResponse, WsResult,
 };
-use hexomino_core::{Action, GamePhase, Hexo, Player};
+use hexomino_core::{Action, GamePhase, Player};
 use wasm_bindgen_futures::spawn_local;
 use yew::{html, Component, Context, Html, Properties};
 
 use self::{end_view::EndView, pick_view::PickView, place_view::PlaceView};
 use crate::{
     context::{connection::ws::WsListenerToken, ScopeExt},
-    game::{GameState, MatchError, MatchInnerState, MatchPhase, MatchState, SharedGameState},
+    game::{MatchError, MatchInnerState, MatchPhase, MatchState, SharedGameState},
     util::ResultExt,
     view::game::{match_end_view::MatchEndView, turn_indicator::TurnIndicator},
 };
@@ -91,22 +91,12 @@ impl Component for GameView {
             OnGameEnd(info) => self.on_game_end(info, ctx),
             OnUserPlay(action) => self.on_user_play(action, ctx),
             OnMatchEnd(info) => self.on_match_end(info, ctx),
-            UserPlay(action) => {
-                let connection = ctx.link().connection();
-                spawn_local(async move {
-                    let _ = connection
-                        .post_api::<MatchActionApi>("/api/game/action", MatchAction::Play(action))
-                        .await
-                        .log_err();
-                });
-                false
-            }
+            UserPlay(action) => self.user_play(action, ctx),
         }
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         fn loader_html() -> Html {
-            log::debug!("loader html");
             html! {
                 <div class="pageloader is-active">
                     <span class="title">{"Waiting for the game to start..."}</span>
@@ -115,9 +105,7 @@ impl Component for GameView {
         }
         let Some(mtch) = &self.mtch else { return loader_html(); };
         match mtch.state() {
-            MatchInnerState::NotStarted => {
-                return loader_html();
-            }
+            MatchInnerState::NotStarted => loader_html(),
             MatchInnerState::Ended { winner } => {
                 let info = MatchEndInfo {
                     scores: *mtch.scores(),
@@ -162,6 +150,23 @@ impl GameView {
         true
     }
 
+    fn user_play(&mut self, action: Action, ctx: &Context<Self>) -> bool {
+        let Some(mtch) = self.match_mut_or_sync(ctx) else { return false };
+        let MatchInnerState::Playing(game) = mtch.state() else { return false };
+        let game = game.borrow();
+        if !game.core().current_player().is_some_and(|&player| player == game.me()) {
+            return false;
+        }
+        let connection = ctx.link().connection();
+        spawn_local(async move {
+            let _ = connection
+                .post_api::<MatchActionApi>("/api/game/action", MatchAction::Play(action))
+                .await
+                .log_err();
+        });
+        false
+    }
+
     fn on_match_end(&mut self, info: MatchEndInfo, ctx: &Context<Self>) -> bool {
         let Some(mtch) = self.match_mut_or_sync(ctx) else { return false };
         is_ok_or_sync(mtch.update_match_end(info), ctx);
@@ -170,7 +175,7 @@ impl GameView {
 
     fn match_mut_or_sync(&mut self, ctx: &Context<Self>) -> Option<&mut MatchState> {
         if let Some(mtch) = &mut self.mtch {
-            return Some(unsafe { &mut *(mtch as *const _ as *mut _) });
+            Some(mtch)
         } else {
             do_sync_match(ctx);
             None
@@ -207,8 +212,7 @@ impl GameView {
                                     <PickView state={game_state.clone()} send_pick={send_pick}/>
                                 },
                                 GamePhase::Place | GamePhase::End => html!{
-                                    <PlaceView state={game_state.clone()} send_place={send_place}
-                                    is_locked={false}/>
+                                    <PlaceView state={game_state.clone()} send_place={send_place}/>
                                 },
                             }
                         }

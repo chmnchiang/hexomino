@@ -46,7 +46,7 @@ impl PartialEq for User {
 }
 
 impl User {
-    pub fn lock_both_user_states<'a>(users: [&'a User; 2]) -> [RwLockWriteGuard<'a, UserState>; 2] {
+    pub fn lock_both_user_states(users: [&User; 2]) -> [RwLockWriteGuard<UserState>; 2] {
         let u0 = users[0];
         let u1 = users[1];
         if u0.id() < u1.id() {
@@ -143,7 +143,6 @@ impl Connection {
                 let mut sender = sender.lock().await;
                 if let Err(err) = sender.send(msg).await {
                     let err = anyhow!("Failed to send websocket to user: {:?}", err);
-                    debug!("{:?}", err);
                     Err(err)
                 } else {
                     Ok(())
@@ -174,21 +173,14 @@ impl UserInner {
 
     #[allow(dead_code)]
     pub fn send(&self, resp: WsResult) -> impl Future<Output = anyhow::Result<()>> {
+        tracing::debug!("Send Websocket message = {resp:?}");
         self.connection.send(Message::Binary(
             bincode::serialize(&resp).unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
         ))
     }
 
     pub fn do_send(&self, resp: WsResult) {
-        tracing::debug!("resp = {resp:?}");
-        spawn(
-            self.connection
-                .send(Message::Binary(
-                    bincode::serialize(&resp)
-                        .unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
-                ))
-                .map(|_| ()),
-        );
+        spawn(self.send(resp).map(|_| ()));
     }
 
     pub fn send_status_update(&self) {
@@ -246,7 +238,7 @@ impl UserPool {
 
     pub fn garbage_collection(&self) {
         self.users.retain(|_, weak| Weak::strong_count(weak) != 0);
-        trace!("users size = {}", self.users.len())
+        tracing::trace!("users size = {}", self.users.len())
     }
 
     pub async fn user_ws_connect(&self, id: UserId, ws: WebSocket) {
@@ -255,7 +247,7 @@ impl UserPool {
         } else {
             let data = match UserData::fetch(&self.db, id).await {
                 None => {
-                    debug!("user id={} does not exists", id);
+                    tracing::debug!("user id={} does not exists", id);
                     send_start_ws_error(ws, StartWsError::WsAuthError).await;
                     return;
                 }
@@ -281,7 +273,7 @@ impl UserPool {
         });
         if let Ok(buf) = bincode::serialize(&msg) {
             let _ = user.connection().send(Message::Binary(buf)).await;
-            debug!("User connect ok");
+            tracing::debug!("User connection complete.");
             user.send_status_update();
         } else {
             debug!("failed to serialize StartWsResult: {:?}", msg.unwrap_err());
@@ -290,7 +282,7 @@ impl UserPool {
 }
 
 async fn connection_recv_loop(user: User, mut receiver: WsStream) {
-    debug!("recv loop");
+    tracing::debug!("User receive loop started.");
     while let Some(msg) = receiver.next().await {
         match msg {
             Ok(msg) => {
@@ -304,7 +296,7 @@ async fn connection_recv_loop(user: User, mut receiver: WsStream) {
             }
         }
     }
-    debug!("end of recv loop");
+    debug!("User receive loop ended.");
 }
 
 impl UserStatus {

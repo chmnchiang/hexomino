@@ -5,7 +5,7 @@ use axum::{Extension, Json, TypedHeader};
 
 use crate::auth::authorize_jwt;
 use crate::http::JsonResponse;
-use crate::kernel::user::User;
+
 use crate::result::CommonError;
 use crate::{auth::create_jwt_token, DbPool};
 

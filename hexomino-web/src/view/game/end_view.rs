@@ -1,11 +1,10 @@
 use gloo::{events::EventListener, utils::window};
-use hexomino_core::Player;
+
 use piet_web::WebRenderContext;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use yew::{
-    classes, function_component, html, use_effect_with_deps, use_mut_ref, use_node_ref, use_ref,
-    Properties,
+    function_component, html, use_effect_with_deps, use_mut_ref, use_node_ref, use_ref, Properties,
 };
 
 use crate::{game::SharedGameState, view::util::resize_canvas_and_return_size};

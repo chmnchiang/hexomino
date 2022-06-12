@@ -16,11 +16,12 @@ use crate::{
     view::game::{match_end_view::MatchEndView, turn_indicator::TurnIndicator},
 };
 
+pub mod ai_game_view;
 mod board_canvas;
 mod board_renderer;
 mod bottom_message;
 mod end_view;
-mod hexo_svg;
+mod hexo_block;
 mod hexo_table;
 mod match_end_view;
 mod pick_view;
@@ -154,7 +155,11 @@ impl GameView {
         let Some(mtch) = self.match_mut_or_sync(ctx) else { return false };
         let MatchInnerState::Playing(game) = mtch.state() else { return false };
         let game = game.borrow();
-        if !game.core().current_player().is_some_and(|&player| player == game.me()) {
+        if !game
+            .core()
+            .current_player()
+            .is_some_and(|&player| player == game.me())
+        {
             return false;
         }
         let connection = ctx.link().connection();

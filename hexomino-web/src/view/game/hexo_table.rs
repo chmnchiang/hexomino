@@ -4,7 +4,7 @@ use hexomino_core::Hexo;
 use itertools::Itertools;
 use yew::{function_component, html, Callback, Html, Properties};
 
-use super::hexo_svg::HexoSvg;
+use super::hexo_block::HexoBlock;
 
 pub type StyledHexo = (Hexo, Option<String>);
 
@@ -31,7 +31,7 @@ pub fn hexo_table(props: &HexoTableProps) -> Html {
             <div class="square-block hexo-block"> {
                 match hexo {
                     Some((hexo, style)) => html!{
-                        <HexoSvg hexo={*hexo} style={style.clone()} onclick={onclick.clone()}/>
+                        <HexoBlock hexo={*hexo} style={style.clone()} onclick={onclick.clone()}/>
                     },
                     None => html!{},
                 }

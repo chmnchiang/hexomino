@@ -1,9 +1,11 @@
 use std::rc::Rc;
 
 use api::{UserStatus, WsResult};
+use hexomino_core::Hexo;
 use wasm_bindgen_futures::spawn_local;
 use yew::{
-    function_component, html, Callback, Component, Context, ContextProvider, Html, Properties,
+    classes, function_component, html, Callback, Component, Context, ContextProvider, Html,
+    Properties,
 };
 
 use crate::context::{
@@ -12,10 +14,15 @@ use crate::context::{
 };
 
 use self::{
-    game::GameView, login_view::LoginView, room::RoomView, rooms::RoomsView,
+    common::hexo_svg::HexoSvg,
+    game::{ai_game_view::AiGameView, GameView},
+    login_view::LoginView,
+    room::RoomView,
+    rooms::RoomsView,
     ws_reconnect::WsReconnectModal,
 };
 
+mod common;
 mod game;
 mod login_view;
 mod room;
@@ -50,12 +57,14 @@ pub enum ReconnectStatus {
     None,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Route {
     Login,
     Rooms,
     Room,
     Game,
+    AiGame,
+    MatchHistory,
 }
 
 pub enum MainMsg {
@@ -169,14 +178,26 @@ impl MainView {
             Route::Rooms => self.rooms_view(),
             Route::Room => self.room_view(),
             Route::Game => self.game_view(),
+            Route::AiGame => self.ai_game_view(),
+            Route::MatchHistory => html!(),
         };
+        let has_navbar = matches!(self.route, Route::Rooms | Route::AiGame);
 
         html! {
-            <section class="section">
-                <div class="container">
-                { inner }
-                </div>
-            </section>
+            <>
+                {
+                    if has_navbar {
+                        self.navbar_view(self.route, ctx)
+                    } else {
+                        html!()
+                    }
+                }
+                <section class="section">
+                    <div class="container">
+                    { inner }
+                    </div>
+                </section>
+            </>
         }
     }
 
@@ -205,15 +226,47 @@ impl MainView {
         }
     }
 
-    fn navbar_view(&self) -> Html {
+    fn ai_game_view(&self) -> Html {
+        html! {
+            <AiGameView/>
+        }
+    }
+
+    fn navbar_view(&self, route: Route, ctx: &Context<Self>) -> Html {
+        let main = ctx.link().main();
+        let navbar_item_html = move |target: Route, text: &str| -> Html {
+            let main = main.clone();
+            let onclick = move |_| main.go(target);
+            html! {
+                <a class="navbar-item" href="javascript:void(0)" {onclick}>
+                    <span class={classes!("navbar-route", (route == target).then_some("is-active"))}>{ text }</span>
+                </a>
+            }
+        };
+
         html! {
             <nav class="navbar is-light" role="navigation" aria-label="main navigation">
-                <div id="navbarBasicExample" class="navbar-menu">
+                <div class="navbar-brand">
+                    <div class="navbar-item">
+                        <div style="width: 30px; height: 30px;
+                            transform: rotate(180deg) scaleX(-1) scale(1.5)">
+                            <HexoSvg hexo={Hexo::new(6)}/>
+                        </div>
+                    <b> { "Hexomino" } </b>
+                    </div>
+                </div>
+                <div class="navbar-menu">
                     <div class="navbar-start">
-                        <a class="navbar-item">{ "Room" }</a>
+                        {
+                            [(Route::Rooms, "Public Games"),
+                             (Route::AiGame, "Ai Game"),
+                             (Route::MatchHistory, "Match History")].iter()
+                                 .map(|(target, text)| navbar_item_html(*target, text))
+                                 .collect::<Html>()
+                        }
                     </div>
                     <div class="navbar-end">
-                        <a class="navbar-item">{ "Logout" }</a>
+                        <a class="navbar-item" href="javascript:void(0)">{ "Logout" }</a>
                     </div>
                 </div>
             </nav>

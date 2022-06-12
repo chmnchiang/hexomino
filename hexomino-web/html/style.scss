@@ -119,6 +119,16 @@ div.hexo-div:hover svg {
   animation-timing-function: linear;
 }
 
+.navbar-item .navbar-route {
+  border-radius: 3px;
+  padding: 5px 6px;
+}
+
+.navbar-item .navbar-route.is-active {
+  border: 2px solid #d0d0d0;
+  padding: 3px 4px;
+}
+
 @keyframes hexo-rotate {
   from {
     transform: rotate(0deg);

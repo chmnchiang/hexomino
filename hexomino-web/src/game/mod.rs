@@ -1,11 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use api::{
-    GameEndInfo, MatchEndInfo, MatchInfo, MatchWinner, UserPlay,
-};
+use api::{GameEndInfo, MatchEndInfo, MatchInfo, MatchWinner, UserPlay, GameEndState};
 use getset::{CopyGetters, Getters};
-use hexomino_core::{Player};
-
+use hexomino_core::{Action, Player};
 
 use crate::util::Shared;
 
@@ -52,7 +49,7 @@ pub struct GameState {
     me: Player,
     num_action: usize,
     #[getset(get = "pub")]
-    end_state: Option<api::GameEndState>,
+    end_state: Option<GameEndState>,
 }
 
 impl MatchState {
@@ -115,7 +112,7 @@ impl MatchState {
             return Err(MatchError::StateNotSynced);
         }
         game_state.num_action += 1;
-        Ok(game_state.core.current_player_play(action)?)
+        Ok(game_state.current_player_play(action)?)
     }
 
     pub fn update_game_end(&mut self, info: GameEndInfo) -> Result<()> {
@@ -167,7 +164,7 @@ impl MatchState {
 }
 
 impl GameState {
-    fn new(me: Player) -> Self {
+    pub fn new(me: Player) -> Self {
         Self {
             core: hexomino_core::State::new(),
             me,
@@ -181,6 +178,17 @@ impl GameState {
             let _ = game.core.current_player_play(action);
         }
         game
+    }
+
+    pub fn current_player_play(
+        &mut self,
+        action: Action,
+    ) -> std::result::Result<(), hexomino_core::Error> {
+        self.core.current_player_play(action)
+    }
+
+    pub fn set_end_state(&mut self, end_state: GameEndState) {
+        self.end_state = Some(end_state);
     }
 }
 

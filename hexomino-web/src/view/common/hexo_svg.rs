@@ -1,5 +1,5 @@
 use piet::kurbo::Vec2;
-use yew::{classes, function_component, html, Callback, Html, Properties};
+use yew::{function_component, html, Html, Properties};
 
 use hexomino_core::{Hexo, Pos};
 
@@ -8,10 +8,6 @@ const BLOCK_LEN: f64 = 20.0;
 #[derive(Properties, PartialEq)]
 pub struct HexoSvgProps {
     pub hexo: Hexo,
-    #[prop_or(None)]
-    pub style: Option<String>,
-    #[prop_or_else(Callback::noop)]
-    pub onclick: Callback<Hexo>,
 }
 
 fn center_of_mass(hexo: Hexo) -> Vec2 {
@@ -22,7 +18,9 @@ fn center_of_mass(hexo: Hexo) -> Vec2 {
     res / 6.0
 }
 
-fn build_hexo_svg(hexo: Hexo) -> Html {
+#[function_component(HexoSvg)]
+pub fn hexo_svg(props: &HexoSvgProps) -> Html {
+    let hexo = props.hexo;
     let center = center_of_mass(hexo);
 
     let tile_to_html = |pos: Pos| {
@@ -54,17 +52,5 @@ fn build_hexo_svg(hexo: Hexo) -> Html {
             { hexo.tiles().map(tile_to_html).collect::<Html>() }
             { hexo.borders().map(border_to_html).collect::<Html>() }
         </svg>
-    }
-}
-
-#[function_component(HexoSvg)]
-pub fn hexo_svg(props: &HexoSvgProps) -> Html {
-    let hexo = props.hexo;
-    let onclick = props.onclick.reform(move |_| hexo);
-    html! {
-        <div style="width: 100%; height: 100%; border: 2px black solid"
-            class={classes![&props.style, "hexo-div"]} {onclick}>
-            { build_hexo_svg(props.hexo) }
-        </div>
     }
 }

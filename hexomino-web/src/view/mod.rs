@@ -243,6 +243,12 @@ impl MainView {
                 </a>
             }
         };
+        let my_name = ctx
+            .link()
+            .connection()
+            .me()
+            .map(|user| user.name.clone())
+            .unwrap_or_else(|| "<Unknown>".to_string());
 
         html! {
             <nav class="navbar is-light" role="navigation" aria-label="main navigation">
@@ -259,13 +265,14 @@ impl MainView {
                     <div class="navbar-start">
                         {
                             [(Route::Rooms, "Public Games"),
-                             (Route::AiGame, "Ai Game"),
+                             (Route::AiGame, "AI Game"),
                              (Route::MatchHistory, "Match History")].iter()
                                  .map(|(target, text)| navbar_item_html(*target, text))
                                  .collect::<Html>()
                         }
                     </div>
                     <div class="navbar-end">
+                        <div class="navbar-item">{ format!("Welcome, {}", my_name) }</div>
                         <a class="navbar-item" href="javascript:void(0)">{ "Logout" }</a>
                     </div>
                 </div>

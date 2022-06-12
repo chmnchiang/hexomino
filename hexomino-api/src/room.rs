@@ -7,7 +7,7 @@ derive_api_data! {
         pub id: RoomId,
         pub users: Vec<User>,
     }
-    #[derive(Hash, Copy, PartialEq, Eq)]
+    #[derive(Hash, Copy, PartialEq, Eq, PartialOrd, Ord)]
     #[derive(derive_more::Display, derive_more::FromStr)]
     pub struct RoomId(pub i64);
 

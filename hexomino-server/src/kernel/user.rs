@@ -38,6 +38,16 @@ use super::game::MatchHandle;
 #[derive(Clone, Debug, derive_more::Deref)]
 pub struct User(Arc<UserInner>);
 
+impl User {
+    fn on_connection_end(&self) {
+        let state = self.state().write();
+        if let UserStatus::InRoom(..) = state.status {
+            drop(state);
+            spawn(Kernel::get().room_manager.leave_room(self.clone()));
+        }
+    }
+}
+
 impl Eq for User {}
 impl PartialEq for User {
     fn eq(&self, other: &Self) -> bool {
@@ -297,6 +307,7 @@ async fn connection_recv_loop(user: User, mut receiver: WsStream) {
         }
     }
     debug!("User receive loop ended.");
+    user.on_connection_end();
 }
 
 impl UserStatus {

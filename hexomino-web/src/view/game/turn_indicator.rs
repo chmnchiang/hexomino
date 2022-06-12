@@ -2,7 +2,7 @@ use yew::{function_component, html, Properties};
 
 use hexomino_core::Player;
 
-#[derive(Properties, PartialEq)]
+#[derive(Properties, PartialEq, Eq)]
 pub struct TurnIndicatorProps {
     #[prop_or(Player::First)]
     pub me: Player,

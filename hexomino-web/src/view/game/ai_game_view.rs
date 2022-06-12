@@ -112,8 +112,8 @@ impl AiGameView {
                 return;
             }
         }
-        let _ = self.current_player_play(action);
-        let ai_play_callback = ctx.link().callback(|action| AiGameMsg::AiPlay(action));
+        self.current_player_play(action);
+        let ai_play_callback = ctx.link().callback(AiGameMsg::AiPlay);
 
         spawn_local(async move {
             while let Some(ai_next_action) = {
@@ -127,7 +127,7 @@ impl AiGameView {
     }
 
     fn ai_play(&mut self, action: Action) {
-        let _ = self.current_player_play(action);
+        self.current_player_play(action);
     }
 
     fn restart_game(&mut self) {

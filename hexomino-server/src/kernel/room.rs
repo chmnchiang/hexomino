@@ -4,11 +4,12 @@ use std::{
         atomic::{AtomicI64, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use api::{RoomAction, RoomError, RoomId, UserId, WsResponse};
 use itertools::Itertools;
-use parking_lot::{RwLock};
+use parking_lot::RwLock;
 
 use crate::{
     kernel::{user::UserStatus, User},
@@ -68,7 +69,16 @@ pub struct Room {
     users: Vec<RoomUser>,
 }
 
-impl Actor for RoomManager {}
+const CACHED_ROOMS_UPDATE_INTERVAL: u64 = 3;
+
+impl Actor for RoomManager {
+    fn started(&mut self, ctx: &Context<Self>) {
+        ctx.notify_later(
+            UpdateCachedRooms,
+            Duration::from_secs(CACHED_ROOMS_UPDATE_INTERVAL),
+        );
+    }
+}
 
 #[derive(Debug)]
 struct CreateRoom {
@@ -93,7 +103,6 @@ impl Handler<CreateRoom> for RoomManager {
 
         drop(user_state);
         user.send_status_update();
-        self.update_cached_rooms();
         Ok(room_id)
     }
 }
@@ -119,7 +128,6 @@ impl Handler<JoinRoom> for RoomManager {
         drop(user_state);
         msg.user.send_status_update();
         room.broadcast_update();
-        self.update_cached_rooms();
         Ok(())
     }
 }
@@ -145,8 +153,11 @@ impl Handler<LeaveRoom> for RoomManager {
         drop(user_state);
         msg.user.send_status_update();
 
-        room.broadcast_update();
-        self.update_cached_rooms();
+        if room.users.is_empty() {
+            self.remove_room(room_id);
+        } else {
+            room.broadcast_update();
+        }
         Ok(())
     }
 }
@@ -163,7 +174,7 @@ impl Handler<GetJoinedRoom> for RoomManager {
             else { return Err(RoomError::NotInRoom.into()); };
         let room = self.get_mut(room_id)?;
         if room.get_user_mut(msg.user.id()).is_none() {
-            return Err(RoomError::NotInRoom.into())
+            return Err(RoomError::NotInRoom.into());
         }
         Ok(room.to_joined_room())
     }
@@ -183,7 +194,26 @@ impl Handler<UserRoomAction> for RoomManager {
             else { return Err(RoomError::NotInRoom.into()); };
         let room = self.get_mut(room_id)?;
         drop(user_state);
-        room.room_action(msg.user.id(), msg.action)
+
+        let should_remove = room.room_action(msg.user.id(), msg.action)?;
+        if should_remove {
+            self.remove_room(room_id);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct UpdateCachedRooms;
+
+impl Handler<UpdateCachedRooms> for RoomManager {
+    type Output = ();
+    fn handle(&mut self, _msg: UpdateCachedRooms, ctx: &Context<Self>) -> Self::Output {
+        self.update_cached_rooms();
+        ctx.notify_later(
+            UpdateCachedRooms,
+            Duration::from_secs(CACHED_ROOMS_UPDATE_INTERVAL),
+        );
     }
 }
 
@@ -205,6 +235,10 @@ impl RoomManager {
 
     fn update_cached_rooms(&mut self) {
         *self.cached_rooms.write() = self.rooms.values().map(|room| room.to_api()).collect_vec()
+    }
+
+    fn remove_room(&mut self, room_id: RoomId) {
+        self.rooms.remove(&room_id);
     }
 }
 
@@ -270,13 +304,15 @@ impl Room {
         }
     }
 
-    fn room_action(&mut self, user_id: UserId, action: RoomAction) -> Result<()> {
+    fn room_action(&mut self, user_id: UserId, action: RoomAction) -> Result<ShouldRemove> {
         let user = self.get_user_mut(user_id).ok_or(RoomError::NotInRoom)?;
+        let mut should_remove = false;
         match action {
             RoomAction::Ready => {
                 user.is_ready = true;
                 if self.all_users_ready() {
                     self.start_game();
+                    should_remove = true;
                 }
             }
             RoomAction::UndoReady => {
@@ -284,7 +320,7 @@ impl Room {
             }
         }
         self.broadcast_update();
-        Ok(())
+        Ok(should_remove)
     }
 
     fn broadcast_update(&self) {
@@ -294,6 +330,8 @@ impl Room {
         }
     }
 }
+
+type ShouldRemove = bool;
 
 struct RoomUser {
     user: User,
@@ -308,4 +346,3 @@ impl RoomUser {
         }
     }
 }
-

@@ -5,7 +5,7 @@ use hexomino_core::{Hexo, Pos};
 
 const BLOCK_LEN: f64 = 20.0;
 
-#[derive(Properties, PartialEq)]
+#[derive(Properties, PartialEq, Eq)]
 pub struct HexoSvgProps {
     pub hexo: Hexo,
 }

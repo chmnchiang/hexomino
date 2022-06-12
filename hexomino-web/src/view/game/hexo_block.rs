@@ -1,7 +1,7 @@
-use piet::kurbo::Vec2;
-use yew::{classes, function_component, html, Callback, Html, Properties};
 
-use hexomino_core::{Hexo, Pos};
+use yew::{classes, function_component, html, Callback, Properties};
+
+use hexomino_core::{Hexo};
 
 use crate::view::common::hexo_svg::HexoSvg;
 

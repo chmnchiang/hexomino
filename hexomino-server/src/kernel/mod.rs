@@ -94,8 +94,8 @@ impl Kernel {
         self.room_manager.create_room(user).await
     }
     pub async fn room_action(&self, user: User, action: RoomAction) -> ApiResult<(), RoomError> {
-        let res = self.room_manager.user_room_action(user, action).await;
-        res
+        
+        self.room_manager.user_room_action(user, action).await
     }
     pub async fn match_action(&self, user: User, action: MatchAction) -> ApiResult<(), MatchError> {
         let game = {

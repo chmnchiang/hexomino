@@ -1,4 +1,3 @@
-
 use std::{future::Future, time::Duration};
 use tokio::{
     select, spawn,
@@ -17,6 +16,7 @@ pub trait Actor: Sized + Send + 'static {
 
         {
             let context = Context { inner_sender };
+            self.started(&context);
             spawn(async move {
                 let context = context;
                 loop {
@@ -41,7 +41,7 @@ pub trait Actor: Sized + Send + 'static {
         addr
     }
 
-    //fn started(&mut self
+    fn started(&mut self, _ctx: &Context<Self>) {}
 }
 
 type SealedMsg<A> = Box<dyn ProcessBy<A> + Send>;

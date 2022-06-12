@@ -122,7 +122,7 @@ impl MatchActor {
                 },
                 scores: self.state.scores(),
             }
-            .as_perspective(idx);
+            .into_perspective(idx);
             users.do_send(WsResponse::MatchEvent(MatchEvent::GameEnd(info)));
         }
     }
@@ -131,7 +131,7 @@ impl MatchActor {
         let scores = self.state.scores();
         for (idx, user) in self.users.iter().enumerate() {
             let winner = self.state.winner_from_user(idx);
-            let info = MatchEndInfo { scores, winner }.as_perspective(idx);
+            let info = MatchEndInfo { scores, winner }.into_perspective(idx);
             user.do_send(WsResponse::MatchEvent(MatchEvent::MatchEnd(info)));
         }
     }
@@ -253,7 +253,7 @@ impl Handler<SyncMatch> for MatchActor {
             ],
             state: match_state,
         }
-        .as_perspective(user_idx))
+        .into_perspective(user_idx))
     }
 }
 
@@ -408,9 +408,9 @@ impl PlayerState {
     }
 }
 
-trait AsPerspective: Sized {
+trait IntoPerspective: Sized {
     fn flip(self) -> Self;
-    fn as_perspective(self, user_idx: usize) -> Self {
+    fn into_perspective(self, user_idx: usize) -> Self {
         match user_idx {
             0 => self,
             1 => self.flip(),
@@ -421,7 +421,7 @@ trait AsPerspective: Sized {
     }
 }
 
-impl AsPerspective for api::MatchState {
+impl IntoPerspective for api::MatchState {
     fn flip(mut self) -> Self {
         self.info = self.info.flip();
         self.scores.swap(0, 1);
@@ -429,21 +429,21 @@ impl AsPerspective for api::MatchState {
     }
 }
 
-impl AsPerspective for api::MatchInfo {
+impl IntoPerspective for api::MatchInfo {
     fn flip(mut self) -> Self {
         self.user_data.swap(0, 1);
         self
     }
 }
 
-impl AsPerspective for api::GameEndInfo {
+impl IntoPerspective for api::GameEndInfo {
     fn flip(mut self) -> Self {
         self.scores.swap(0, 1);
         self
     }
 }
 
-impl AsPerspective for api::MatchEndInfo {
+impl IntoPerspective for api::MatchEndInfo {
     fn flip(mut self) -> Self {
         self.scores.swap(0, 1);
         self

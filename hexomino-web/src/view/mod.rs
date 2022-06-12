@@ -40,7 +40,7 @@ pub fn app() -> Html {
     }
 }
 
-#[derive(PartialEq, Properties, Default)]
+#[derive(PartialEq, Eq, Properties, Default)]
 pub struct MainProps;
 
 pub struct MainView {
@@ -57,7 +57,7 @@ pub enum ReconnectStatus {
     None,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Route {
     Login,
     Rooms,

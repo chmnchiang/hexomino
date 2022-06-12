@@ -28,7 +28,7 @@ mod pick_view;
 mod place_view;
 mod turn_indicator;
 
-#[derive(PartialEq, Properties)]
+#[derive(PartialEq, Eq, Properties)]
 pub struct GameProps {}
 
 pub struct GameView {
@@ -112,9 +112,9 @@ impl Component for GameView {
                     scores: *mtch.scores(),
                     winner: *winner,
                 };
-                return html! {
+                html! {
                     <MatchEndView {info} names={mtch.names()}/>
-                };
+                }
             }
             MatchInnerState::Playing(game_state) => self.game_playing_view(mtch, game_state, ctx),
         }

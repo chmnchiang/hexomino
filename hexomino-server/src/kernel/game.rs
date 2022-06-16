@@ -1,9 +1,10 @@
-use std::{sync::Arc, time::Duration, cmp::Ordering};
+use std::{cmp::Ordering, sync::Arc, time::Duration};
 
 use api::{
     GameEndReason, GameInnerState, MatchAction, MatchEndInfo, MatchError, MatchEvent, MatchId,
     MatchInnerState, MatchWinner, UserId, UserPlay, WsResponse,
 };
+use chrono::{DateTime, Utc};
 use hexomino_core::{Action, Player, State as GameState};
 use uuid::Uuid;
 
@@ -58,6 +59,7 @@ struct MatchState {
     first_user_player: Player,
     prev_actions: Vec<Action>,
     prev_end_state: Option<GameEndState>,
+    deadline: Deadline,
 }
 
 #[derive(Copy, Clone)]
@@ -79,6 +81,11 @@ enum MatchPhase {
     MatchEnded,
 }
 
+const MATCH_START_WAIT_TIME: Duration = Duration::from_secs(1);
+const LEEWAY: Duration = Duration::from_secs(2);
+const GAME_PLAY_TIME_LIMIT: Duration = Duration::from_secs(10);
+const BETWEEN_GAME_DELAY: Duration = Duration::from_secs(5);
+
 impl MatchActor {
     pub fn new(users: [User; 2]) -> Self {
         Self {
@@ -95,7 +102,6 @@ impl MatchActor {
     }
 
     fn broadcast_last_action(&self) {
-        tracing::debug!("broadcast action");
         if let Some(action) = self.state.prev_actions.last().cloned() {
             for users in &self.users {
                 users.do_send(WsResponse::MatchEvent(MatchEvent::UserPlay(UserPlay {
@@ -136,6 +142,13 @@ impl MatchActor {
         }
     }
 
+    fn broadcast_deadline(&self) {
+        let Some(deadline) = self.state.deadline.to_api() else { return; };
+        for user in &self.users {
+            user.do_send(WsResponse::MatchEvent(MatchEvent::UpdateDeadline(deadline)));
+        }
+    }
+
     fn user_idx(&self, user_id: UserId) -> Option<usize> {
         if user_id == self.users[0].id() {
             Some(0)
@@ -164,7 +177,6 @@ impl MatchActor {
 
     fn check_all_ready(&self, ctx: &Context<Self>) {
         if self.state.player_states.iter().all(|p| p.is_ready) {
-            tracing::debug!("notify startnewgame");
             ctx.notify(StartNewGame);
         }
     }
@@ -187,14 +199,21 @@ impl MatchActor {
         self.broadcast_game_end();
 
         if !match_is_end {
-            ctx.notify_later(StartNewGame, Duration::from_secs(3));
+            ctx.notify_later(StartNewGame, BETWEEN_GAME_DELAY);
         } else {
-            ctx.notify_later(EndMatch, Duration::from_secs(3));
+            ctx.notify_later(EndMatch, BETWEEN_GAME_DELAY);
         }
+        self.state.deadline.set_public(BETWEEN_GAME_DELAY);
+        self.broadcast_deadline();
     }
 }
 
-impl Actor for MatchActor {}
+impl Actor for MatchActor {
+    fn started(&mut self, ctx: &Context<Self>) {
+        let nonce = self.state.deadline.set();
+        ctx.notify_later(CancelGame { nonce }, MATCH_START_WAIT_TIME);
+    }
+}
 
 pub struct SyncMatch {
     user: User,
@@ -252,6 +271,7 @@ impl Handler<SyncMatch> for MatchActor {
                 self.state.player_states[1].score,
             ],
             state: match_state,
+            deadline: self.state.deadline.to_api(),
         }
         .into_perspective(user_idx))
     }
@@ -272,6 +292,7 @@ impl Handler<UserAction> for MatchActor {
         match msg.action {
             MatchAction::Play(action) => {
                 self.state.user_play(player, action)?;
+                self.state.deadline.unset();
                 self.broadcast_last_action();
 
                 // TODO: Test code. Delete me!!
@@ -280,6 +301,19 @@ impl Handler<UserAction> for MatchActor {
                 if let Some(player) = self.state.game.winner() {
                     self.player_win_game(player, GameEndReason::NoValidMove, ctx);
                 } else {
+                    let nonce = self.state.deadline.set_public(GAME_PLAY_TIME_LIMIT);
+                    ctx.notify_later(
+                        PlayerTimeout {
+                            player: self
+                                .state
+                                .game
+                                .current_player()
+                                .expect("game not ended but no current player"),
+                            nonce,
+                        },
+                        GAME_PLAY_TIME_LIMIT + LEEWAY,
+                    );
+                    self.broadcast_deadline();
                     //panic!("how come??");
                 }
             }
@@ -293,8 +327,9 @@ struct StartNewGame;
 impl Handler<StartNewGame> for MatchActor {
     type Output = ();
 
-    fn handle(&mut self, _msg: StartNewGame, _ctx: &Context<Self>) -> Self::Output {
-        tracing::debug!("start new game...");
+    fn handle(&mut self, _msg: StartNewGame, ctx: &Context<Self>) -> Self::Output {
+        self.state.deadline.unset();
+
         let state = &mut self.state;
         if state.phase != MatchPhase::GameNotStarted && state.phase != MatchPhase::GameEnded {
             return;
@@ -314,6 +349,16 @@ impl Handler<StartNewGame> for MatchActor {
         //state.fast_forward_to_place();
 
         self.broadcast_new_game();
+
+        let nonce = self.state.deadline.set_public(GAME_PLAY_TIME_LIMIT);
+        ctx.notify_later(
+            PlayerTimeout {
+                player: Player::First,
+                nonce,
+            },
+            GAME_PLAY_TIME_LIMIT + LEEWAY,
+        );
+        self.broadcast_deadline();
     }
 }
 
@@ -328,6 +373,45 @@ impl Handler<EndMatch> for MatchActor {
         for mut state in user_states {
             state.status = UserStatus::Idle;
         }
+    }
+}
+
+struct CancelGame {
+    nonce: DeadlineNonce,
+}
+
+impl Handler<CancelGame> for MatchActor {
+    type Output = ();
+
+    fn handle(&mut self, msg: CancelGame, _ctx: &Context<Self>) -> Self::Output {
+        if !self.state.deadline.expiration_is_valid(msg.nonce) {
+            return;
+        }
+        {
+            let user_states = User::lock_both_user_states(self.users.each_ref());
+            for mut state in user_states {
+                state.status = UserStatus::Idle;
+            }
+        }
+        for user in &self.users {
+            user.send_status_update();
+        }
+    }
+}
+
+struct PlayerTimeout {
+    player: Player,
+    nonce: DeadlineNonce,
+}
+
+impl Handler<PlayerTimeout> for MatchActor {
+    type Output = ();
+
+    fn handle(&mut self, msg: PlayerTimeout, ctx: &Context<Self>) -> Self::Output {
+        if !self.state.deadline.expiration_is_valid(msg.nonce) {
+            return;
+        }
+        self.player_win_game(msg.player.other(), GameEndReason::TimeLimitExceed, ctx);
     }
 }
 
@@ -359,6 +443,7 @@ impl MatchState {
             first_user_player: Player::First,
             prev_actions: vec![],
             prev_end_state: None,
+            deadline: Deadline::new(),
         }
     }
 
@@ -405,6 +490,64 @@ impl PlayerState {
             is_ready: false,
             score: 0,
         }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+struct DeadlineNonce(u64);
+
+impl DeadlineNonce {
+    fn advance(&mut self) {
+        self.0 += 1;
+    }
+}
+
+struct Deadline {
+    nonce: DeadlineNonce,
+    inner: Option<DeadlineInner>,
+}
+
+struct DeadlineInner {
+    time: DateTime<Utc>,
+    duration: Duration,
+}
+
+impl Deadline {
+    fn new() -> Self {
+        Self {
+            nonce: DeadlineNonce(0),
+            inner: None,
+        }
+    }
+
+    fn set(&mut self) -> DeadlineNonce {
+        self.nonce.advance();
+        self.nonce
+    }
+
+    fn set_public(&mut self, after: Duration) -> DeadlineNonce {
+        self.set();
+        self.inner = Some(DeadlineInner {
+            time: Utc::now() + chrono::Duration::from_std(after).expect("duration out of bound"),
+            duration: after,
+        });
+        self.nonce
+    }
+
+    fn unset(&mut self) {
+        self.nonce.advance();
+        self.inner = None;
+    }
+
+    fn expiration_is_valid(&self, nonce: DeadlineNonce) -> bool {
+        self.inner.is_some() && self.nonce == nonce
+    }
+
+    fn to_api(&self) -> Option<api::Deadline> {
+        self.inner.as_ref().map(|inner| api::Deadline {
+            time: inner.time,
+            duration: inner.duration,
+        })
     }
 }
 

@@ -24,7 +24,6 @@ use getset::{CopyGetters, Getters};
 use parking_lot::{RwLock, RwLockWriteGuard};
 use stream_cancel::{StreamExt as _, TakeUntilIf, Trigger, Tripwire};
 use tokio::{spawn, sync::Mutex};
-use tracing::{debug, trace};
 
 use crate::{
     auth::authorize_jwt,
@@ -87,6 +86,7 @@ pub struct UserInner {
 
 #[derive(Debug)]
 pub struct UserData {
+    pub username: String,
     pub name: String,
 }
 
@@ -166,8 +166,12 @@ impl Connection {
 }
 
 impl UserInner {
-    fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         &self.data.name
+    }
+
+    pub fn username(&self) -> &str {
+        &self.data.username
     }
 
     pub fn to_api(&self) -> api::User {
@@ -183,7 +187,7 @@ impl UserInner {
 
     #[allow(dead_code)]
     pub fn send(&self, resp: WsResult) -> impl Future<Output = anyhow::Result<()>> {
-        tracing::debug!("Send Websocket message = {resp:?}");
+        tracing::debug!("Send to user={} Websocket message = {resp:?}", self.username());
         self.connection.send(Message::Binary(
             bincode::serialize(&resp).unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
         ))
@@ -204,7 +208,7 @@ impl UserData {
     async fn fetch(db: &DbPool, UserId(id): UserId) -> Option<Self> {
         let user = sqlx::query!(
             r#"
-            SELECT name FROM Users
+            SELECT username, name FROM Users
             WHERE id = $1
             "#,
             id
@@ -214,6 +218,7 @@ impl UserData {
         .ok()?;
 
         Some(Self {
+            username: user.username,
             name: user.name.unwrap_or_else(|| "<Unnamed>".to_string()),
         })
     }
@@ -286,17 +291,17 @@ impl UserPool {
             tracing::debug!("User connection complete.");
             user.send_status_update();
         } else {
-            debug!("failed to serialize StartWsResult: {:?}", msg.unwrap_err());
+            tracing::debug!("failed to serialize StartWsResult: {:?}", msg.unwrap_err());
         }
     }
 }
 
+#[tracing::instrument(skip_all, fields(user = ?user.username()))]
 async fn connection_recv_loop(user: User, mut receiver: WsStream) {
     tracing::debug!("User receive loop started.");
     while let Some(msg) = receiver.next().await {
         match msg {
             Ok(msg) => {
-                trace!("user send");
                 Kernel::get()
                     .handle_user_ws_message(user.clone(), msg)
                     .await;
@@ -306,7 +311,7 @@ async fn connection_recv_loop(user: User, mut receiver: WsStream) {
             }
         }
     }
-    debug!("User receive loop ended.");
+    tracing::debug!("User receive loop ended.");
     user.on_connection_end();
 }
 

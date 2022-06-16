@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use api::{
-    GameEndInfo, MatchAction, MatchActionApi, MatchEndInfo, MatchEvent, SyncMatchApi, UserPlay,
-    WsResponse, WsResult,
+    Deadline, GameEndInfo, MatchAction, MatchActionApi, MatchEndInfo, MatchEvent, SyncMatchApi,
+    UserPlay, WsResponse, WsResult,
 };
 use hexomino_core::{Action, GamePhase, Player};
 use wasm_bindgen_futures::spawn_local;
@@ -13,13 +13,14 @@ use crate::{
     context::{connection::ws::WsListenerToken, ScopeExt},
     game::{MatchError, MatchInnerState, MatchPhase, MatchState, SharedGameState},
     util::ResultExt,
-    view::game::{match_end_view::MatchEndView, turn_indicator::TurnIndicator},
+    view::game::{match_end_view::MatchEndView, turn_indicator::TurnIndicator, deadline_indicator::DeadlineIndicator},
 };
 
 pub mod ai_game_view;
 mod board_canvas;
 mod board_renderer;
 mod bottom_message;
+mod deadline_indicator;
 mod end_view;
 mod hexo_block;
 mod hexo_table;
@@ -34,6 +35,7 @@ pub struct GameProps {}
 pub struct GameView {
     mtch: Option<MatchState>,
     game_status: GameStatus,
+    deadline: Option<Deadline>,
     _ws_listener_token: WsListenerToken,
 }
 
@@ -43,6 +45,7 @@ pub enum GameMsg {
     OnUserPlay(UserPlay),
     OnGameEnd(GameEndInfo),
     OnMatchEnd(MatchEndInfo),
+    OnUpdateDeadline(Deadline),
     UserPlay(Action),
 }
 
@@ -74,12 +77,16 @@ impl Component for GameView {
                     WsResponse::MatchEvent(MatchEvent::MatchEnd(info)) => {
                         Some(GameMsg::OnMatchEnd(info))
                     }
+                    WsResponse::MatchEvent(MatchEvent::UpdateDeadline(deadline)) => {
+                        Some(GameMsg::OnUpdateDeadline(deadline))
+                    }
                     _ => None,
                 }
             }));
         Self {
             mtch: None,
             game_status: GameStatus::NotStarted,
+            deadline: None,
             _ws_listener_token: ws_listener_token,
         }
     }
@@ -93,6 +100,10 @@ impl Component for GameView {
             OnUserPlay(action) => self.on_user_play(action, ctx),
             OnMatchEnd(info) => self.on_match_end(info, ctx),
             UserPlay(action) => self.user_play(action, ctx),
+            OnUpdateDeadline(deadline) => {
+                self.deadline = Some(deadline);
+                true
+            }
         }
     }
 
@@ -209,6 +220,9 @@ impl GameView {
                     current_player={core_game_state.current_player()}
                     player_names={mtch.names_ord_by_player()}
                     scores={mtch.scores_ord_by_player()}/>
+                if let Some(deadline) = self.deadline {
+                    <DeadlineIndicator deadline={deadline}/>
+                }
                 {
                     match mtch.phase() {
                         MatchPhase::GamePlaying => {

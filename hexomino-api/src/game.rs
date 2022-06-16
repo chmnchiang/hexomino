@@ -1,3 +1,6 @@
+use std::time::Duration;
+
+use chrono::{serde::ts_milliseconds, DateTime, Utc};
 use hexomino_core::{Action, Player};
 use uuid::Uuid;
 
@@ -9,6 +12,7 @@ derive_api_data! {
         pub game_idx: i32,
         pub scores: [u32; 2],
         pub state: MatchInnerState,
+        pub deadline: Option<Deadline>,
     }
     pub struct MatchInfo {
         pub id: MatchId,
@@ -48,6 +52,7 @@ derive_api_data! {
         UserPlay(UserPlay),
         GameEnd(GameEndInfo),
         MatchEnd(MatchEndInfo),
+        UpdateDeadline(Deadline),
     }
     pub struct UserPlay {
         pub action: Action,
@@ -61,6 +66,12 @@ derive_api_data! {
         pub scores: [u32; 2],
         pub winner: MatchWinner,
     }
+    #[derive(Copy, PartialEq, Eq)]
+    pub struct Deadline {
+        #[serde(with = "ts_milliseconds")]
+        pub time: DateTime<Utc>,
+        pub duration: Duration,
+    }
     #[derive(Copy)]
     pub enum MatchWinner {
         You,
@@ -70,6 +81,7 @@ derive_api_data! {
     #[derive(Copy)]
     pub enum GameEndReason {
         NoValidMove,
+        TimeLimitExceed,
     }
     #[derive(thiserror::Error)]
     pub enum MatchError {

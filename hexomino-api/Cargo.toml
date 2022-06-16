@@ -8,13 +8,9 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.56"
-axum = { version = "0.5.3", default-features = false, optional = true }
+chrono = { version = "0.4.19", features = ["serde"] }
 derive_more = "0.99.17"
 hexomino-core = { version = "0.1.0", path = "../hexomino-core" }
-hyper = "0.14.18"
-serde = "1.0.136"
+serde = { version = "1.0.136", features = ["derive"] }
 thiserror = "1.0.30"
 uuid = { version = "1.0.0", features = ["serde"] }
-
-[features]
-axum = ["dep:axum"]

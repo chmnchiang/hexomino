@@ -88,7 +88,7 @@ struct CreateRoom {
 impl Handler<CreateRoom> for RoomManager {
     type Output = Result<RoomId>;
 
-    #[tracing::instrument(skip(self, _ctx))]
+    #[tracing::instrument(skip_all, fields(action = "CreateRoom", user = ?msg.user.username()), ret)]
     fn handle(&mut self, msg: CreateRoom, _ctx: &Context<Self>) -> Self::Output {
         let user = msg.user;
         let user_clone = user.clone();
@@ -116,7 +116,7 @@ struct JoinRoom {
 impl Handler<JoinRoom> for RoomManager {
     type Output = Result<()>;
 
-    #[tracing::instrument(skip(self, _ctx))]
+    #[tracing::instrument(skip_all, fields(action = "JoinRoom", user = ?msg.user.username(), room = ?msg.room_id), ret)]
     fn handle(&mut self, msg: JoinRoom, _ctx: &Context<Self>) -> Self::Output {
         let mut user_state = msg.user.state().write();
         let UserStatus::Idle = user_state.status else { return Err(RoomError::UserBusy)? };
@@ -140,7 +140,7 @@ struct LeaveRoom {
 impl Handler<LeaveRoom> for RoomManager {
     type Output = Result<()>;
 
-    #[tracing::instrument(skip(self, _ctx))]
+    #[tracing::instrument(skip_all, fields(action = "LeaveRoom", user = ?msg.user.username()), ret)]
     fn handle(&mut self, msg: LeaveRoom, _ctx: &Context<Self>) -> Self::Output {
         let user_id = msg.user.id();
         let mut user_state = msg.user.state().write();
@@ -188,6 +188,7 @@ struct UserRoomAction {
 
 impl Handler<UserRoomAction> for RoomManager {
     type Output = Result<()>;
+    #[tracing::instrument(skip_all, fields(action = "UserRoomAction", user = ?msg.user.username(), action=?msg.action), ret)]
     fn handle(&mut self, msg: UserRoomAction, _ctx: &Context<Self>) -> Self::Output {
         let user_state = msg.user.state().read();
         let UserStatus::InRoom(room_id) = user_state.status

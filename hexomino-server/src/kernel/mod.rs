@@ -21,6 +21,7 @@ use self::{
 };
 
 pub mod actor;
+pub mod deadline;
 pub mod game;
 pub mod room;
 pub mod user;
@@ -94,7 +95,6 @@ impl Kernel {
         self.room_manager.create_room(user).await
     }
     pub async fn room_action(&self, user: User, action: RoomAction) -> ApiResult<(), RoomError> {
-        
         self.room_manager.user_room_action(user, action).await
     }
     pub async fn match_action(&self, user: User, action: MatchAction) -> ApiResult<(), MatchError> {

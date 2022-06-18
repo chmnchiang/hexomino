@@ -17,6 +17,7 @@ use self::{
     common::hexo_svg::HexoSvg,
     game::{ai_game_view::AiGameView, GameView},
     login_view::LoginView,
+    match_history_view::MatchHistoryView,
     room::RoomView,
     rooms::RoomsView,
     ws_reconnect::WsReconnectModal,
@@ -25,6 +26,7 @@ use self::{
 mod common;
 mod game;
 mod login_view;
+mod match_history_view;
 mod room;
 mod rooms;
 mod shared_link;
@@ -179,9 +181,12 @@ impl MainView {
             Route::Room => self.room_view(),
             Route::Game => self.game_view(),
             Route::AiGame => self.ai_game_view(),
-            Route::MatchHistory => html!(),
+            Route::MatchHistory => self.match_history_view(),
         };
-        let has_navbar = matches!(self.route, Route::Rooms | Route::AiGame);
+        let has_navbar = matches!(
+            self.route,
+            Route::Rooms | Route::AiGame | Route::MatchHistory
+        );
 
         html! {
             <>
@@ -229,6 +234,12 @@ impl MainView {
     fn ai_game_view(&self) -> Html {
         html! {
             <AiGameView/>
+        }
+    }
+
+    fn match_history_view(&self) -> Html {
+        html! {
+            <MatchHistoryView/>
         }
     }
 

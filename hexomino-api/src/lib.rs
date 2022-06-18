@@ -1,14 +1,16 @@
 mod auth;
+mod game;
+mod match_history;
 mod room;
 mod user;
 mod ws;
-mod game;
 
 pub use auth::*;
+pub use game::*;
+pub use match_history::*;
 pub use room::*;
 pub use user::*;
 pub use ws::*;
-pub use game::*;
 
 macro_rules! derive_api_data {
     () => {};

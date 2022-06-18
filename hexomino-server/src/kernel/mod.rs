@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use api::{
-    Api, JoinedRoom, MatchAction, MatchError, MatchState, Never, Room, RoomAction, RoomError,
-    RoomId, StartWsApi, StartWsError, StartWsRequest, UserId, WsRequest,
+    Api, JoinedRoom, MatchAction, MatchError, MatchHistoryNoGames, MatchState, Never, Room,
+    RoomAction, RoomError, RoomId, StartWsApi, StartWsError, StartWsRequest, UserId, WsRequest,
 };
 use axum::extract::ws::{Message, WebSocket};
 use once_cell::sync::OnceCell;
@@ -17,12 +17,13 @@ use crate::{
 
 use self::{
     room::RoomManagerHandle,
-    user::{User, UserPool, UserStatus},
+    user::{User, UserPool, UserStatus}, match_history::list_user_match_histories,
 };
 
 pub mod actor;
 pub mod deadline;
 pub mod game;
+pub mod match_history;
 pub mod room;
 pub mod user;
 
@@ -35,6 +36,7 @@ enum KernelMsg {
 pub struct Kernel {
     user_pool: UserPool,
     room_manager: RoomManagerHandle,
+    db: DbPool,
 }
 
 async fn send_start_ws_error(mut ws: WebSocket, err: StartWsError) {
@@ -53,7 +55,8 @@ impl Kernel {
         KERNEL
             .set(Self {
                 room_manager: RoomManagerHandle::new(),
-                user_pool: UserPool::new(db),
+                user_pool: UserPool::new(db.clone()),
+                db,
             })
             .map_err(|_| ())
             .expect("kernel is initialized twice");
@@ -115,15 +118,23 @@ impl Kernel {
         };
         game.sync_match(user).await
     }
+    pub async fn list_user_match_histories(
+        &self,
+        user: User,
+    ) -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
+        list_user_match_histories(user.id()).await
+    }
 }
+
+const CHECK_USER_INTERVAL: Duration = Duration::from_secs(30);
 
 impl Kernel {
     fn spawn_services() {
         spawn(async {
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            let mut interval = tokio::time::interval(CHECK_USER_INTERVAL);
             loop {
                 interval.tick().await;
-                Kernel::get().user_pool.garbage_collection();
+                Kernel::get().user_pool.check_all_users();
             }
         });
     }
@@ -146,7 +157,8 @@ impl Kernel {
                 self.update(KernelMsg::ConnectionLost(user)).await;
                 return;
             }
-            Message::Ping(_) | Message::Pong(_) => return,
+            Message::Ping(_) => return,
+            Message::Pong(_) => return,
             _ => {
                 debug!("user send incorrect ws type");
                 return;

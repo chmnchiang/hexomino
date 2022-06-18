@@ -185,9 +185,11 @@ impl UserInner {
         self.connection.drop();
     }
 
-    #[allow(dead_code)]
     pub fn send(&self, resp: WsResult) -> impl Future<Output = anyhow::Result<()>> {
-        tracing::debug!("Send to user={} Websocket message = {resp:?}", self.username());
+        tracing::debug!(
+            "Send to user={} Websocket message = {resp:?}",
+            self.username()
+        );
         self.connection.send(Message::Binary(
             bincode::serialize(&resp).unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
         ))
@@ -201,6 +203,10 @@ impl UserInner {
         self.do_send(api::WsResponse::UserStatusUpdate(
             self.state().read().status.to_api(),
         ));
+    }
+
+    pub fn do_send_ping(&self) {
+        spawn(self.connection().send(Message::Ping(vec![])));
     }
 }
 
@@ -219,9 +225,13 @@ impl UserData {
 
         Some(Self {
             username: user.username,
-            name: user.name.unwrap_or_else(|| "<Unnamed>".to_string()),
+            name: unwrap_name_or_unnamed(user.name),
         })
     }
+}
+
+pub fn unwrap_name_or_unnamed(name: Option<String>) -> String {
+    name.unwrap_or_else(|| "<Unnamed>".to_string())
 }
 
 pub struct UserPool {
@@ -251,9 +261,18 @@ impl UserPool {
         }
     }
 
-    pub fn garbage_collection(&self) {
-        self.users.retain(|_, weak| Weak::strong_count(weak) != 0);
-        tracing::trace!("users size = {}", self.users.len())
+    pub fn check_all_users(&self) {
+        type ShouldKeep = bool;
+        fn user_check(user: &Weak<UserInner>) -> ShouldKeep {
+            if let Some(user) = Weak::upgrade(user) {
+                user.do_send_ping();
+                true
+            } else {
+                false
+            }
+        }
+        self.users.retain(|_, user| user_check(user));
+        tracing::info!("users size = {}", self.users.len())
     }
 
     pub async fn user_ws_connect(&self, id: UserId, ws: WebSocket) {

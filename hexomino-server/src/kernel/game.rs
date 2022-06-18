@@ -6,12 +6,14 @@ use api::{
 };
 use chrono::{DateTime, Utc};
 use hexomino_core::{Action, Player, State as GameState};
+use tokio::spawn;
 use uuid::Uuid;
 
 use crate::result::ApiResult;
 
 use super::{
     actor::{Actor, Addr, Context, Handler},
+    match_history::MatchHistory,
     user::{User, UserStatus},
 };
 
@@ -42,6 +44,7 @@ pub struct MatchActor {
     info: Arc<MatchInfo>,
     state: MatchState,
     users: [User; 2],
+    history: Option<MatchHistory>,
 }
 
 #[derive(Debug)]
@@ -83,15 +86,18 @@ enum MatchPhase {
 
 const MATCH_START_WAIT_TIME: Duration = Duration::from_secs(1);
 const LEEWAY: Duration = Duration::from_secs(2);
-const GAME_PLAY_TIME_LIMIT: Duration = Duration::from_secs(10);
+const GAME_PLAY_TIME_LIMIT: Duration = Duration::from_secs(20);
 const BETWEEN_GAME_DELAY: Duration = Duration::from_secs(5);
 
 impl MatchActor {
     pub fn new(users: [User; 2]) -> Self {
+        let info = MatchInfo::new(&users);
+        let history = MatchHistory::new(info.id, info.user_data.clone().map(|u| u.id));
         Self {
-            info: Arc::new(MatchInfo::new(&users)),
+            info: Arc::new(info),
             users,
             state: MatchState::new(),
+            history: Some(history),
         }
     }
 
@@ -192,10 +198,19 @@ impl MatchActor {
         } else {
             MatchPhase::GameEnded
         };
-        self.state.prev_end_state = Some(GameEndState {
+        state.prev_end_state = Some(GameEndState {
             winner: player,
             reason,
         });
+        self.history
+            .as_mut()
+            .expect("history is none before the match ends")
+            .add_game(
+                state.first_user_player,
+                state.prev_actions.clone(),
+                player,
+                reason,
+            );
         self.broadcast_game_end();
 
         if !match_is_end {
@@ -368,6 +383,13 @@ impl Handler<EndMatch> for MatchActor {
     type Output = ();
 
     fn handle(&mut self, _msg: EndMatch, _ctx: &Context<Self>) -> Self::Output {
+        let history = self.history.take().expect("history is empty before match ends");
+        let end_time = Utc::now();
+        spawn(async move {
+            if let Err(err) = history.save(end_time).await {
+                tracing::error!("failed to save history: {}", err);
+            }
+        });
         self.broadcast_match_end();
         let user_states = User::lock_both_user_states(self.users.each_ref());
         for mut state in user_states {

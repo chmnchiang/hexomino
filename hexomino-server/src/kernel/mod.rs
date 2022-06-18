@@ -17,7 +17,7 @@ use crate::{
 
 use self::{
     room::RoomManagerHandle,
-    user::{User, UserPool, UserStatus}, match_history::list_user_match_histories,
+    user::{User, UserPool, UserStatus}, match_history::{list_user_match_histories, list_all_match_histories},
 };
 
 pub mod actor;
@@ -122,7 +122,11 @@ impl Kernel {
         &self,
         user: User,
     ) -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
-        list_user_match_histories(user.id()).await
+        if user.is_admin() {
+            list_all_match_histories().await
+        } else {
+            list_user_match_histories(user.id()).await
+        }
     }
 }
 

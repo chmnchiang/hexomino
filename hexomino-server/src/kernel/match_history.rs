@@ -112,46 +112,27 @@ impl MatchHistory {
         Ok(())
     }
 }
+struct Record {
+    id: Uuid,
+    user_is_first: Option<bool>,
+    user0: Option<String>,
+    user1: Option<String>,
+    scores: Vec<i32>,
+    end_time: DateTime<Utc>,
+}
 
-pub async fn list_user_match_histories(user: UserId) -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
-    struct Record {
-        id: Uuid,
-        user_is_first: Option<bool>,
-        user0: Option<String>,
-        user1: Option<String>,
-        scores: Vec<i32>,
-        end_time: DateTime<Utc>,
-    }
-    let result = sqlx::query_as!(
-        Record,
-        r#"
-        SELECT mh.id AS id, u0.name AS user0, u1.name AS user1,
-            mh.scores AS scores, u0.id = $1 AS user_is_first, mh.end_time AS end_time
-        FROM UserHistories
-        JOIN MatchHistories mh ON mh.id = UserHistories.match_id
-        JOIN Users u0 ON mh.users[1] = u0.id
-        JOIN Users u1 ON mh.users[2] = u1.id
-        WHERE UserHistories.user_id = $1
-        ORDER BY mh.end_time
-        LIMIT 50;
-        "#,
-        user.0,
-    )
-    .fetch_all(&Kernel::get().db)
-    .await
-    .context("failed to query DB")?;
-
-    fn convert_record_to_api(record: Record) -> Result<MatchHistoryNoGames> {
-        let id = MatchId(record.id);
-        let user_is_first = record
+impl Record {
+    fn try_into_api(self) -> Result<MatchHistoryNoGames> {
+        let id = MatchId(self.id);
+        let user_is_first = self
             .user_is_first
-            .context("user is first is NULL in the record")?;
-        let user0 = unwrap_name_or_unnamed(record.user0);
-        let user1 = unwrap_name_or_unnamed(record.user1);
-        let scores = <[i32; 2]>::try_from(record.scores)
+            .context("user_is_first is NULL in the record")?;
+        let user0 = unwrap_name_or_unnamed(self.user0);
+        let user1 = unwrap_name_or_unnamed(self.user1);
+        let scores = <[i32; 2]>::try_from(self.scores)
             .map_err(|_| anyhow::anyhow!("failed to covert scores to [u32; 2]"))?
             .map(|x| x as u32);
-        let end_time = record.end_time;
+        let end_time = self.end_time;
         Ok(MatchHistoryNoGames {
             id,
             user_is_first,
@@ -160,9 +141,46 @@ pub async fn list_user_match_histories(user: UserId) -> ApiResult<Vec<MatchHisto
             end_time,
         })
     }
+}
+
+pub async fn list_user_match_histories(user: UserId) -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
+    let result = sqlx::query_as!(Record, r#"
+        SELECT mh.id AS id, u0.name AS user0, u1.name AS user1,
+        mh.scores AS scores, u0.id = $1 AS user_is_first, mh.end_time AS end_time
+        FROM UserHistories
+        JOIN MatchHistories mh ON mh.id = UserHistories.match_id
+        JOIN Users u0 ON mh.users[1] = u0.id
+        JOIN Users u1 ON mh.users[2] = u1.id
+        WHERE UserHistories.user_id = $1
+        ORDER BY mh.end_time
+        LIMIT 50;
+    "#, user.0,)
+    .fetch_all(&Kernel::get().db)
+    .await
+    .context("failed to query DB")?;
 
     Ok(result
         .into_iter()
-        .map(convert_record_to_api)
+        .map(|r| r.try_into_api())
+        .collect::<Result<Vec<MatchHistoryNoGames>>>()?)
+}
+
+pub async fn list_all_match_histories() -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
+    let result = sqlx::query_as!(Record, r#"
+        SELECT mh.id AS id, u0.name AS user0, u1.name AS user1,
+        mh.scores AS scores, TRUE AS user_is_first, mh.end_time AS end_time
+        FROM UserHistories
+        JOIN MatchHistories mh ON mh.id = UserHistories.match_id
+        JOIN Users u0 ON mh.users[1] = u0.id
+        JOIN Users u1 ON mh.users[2] = u1.id
+        ORDER BY mh.end_time
+    "#)
+    .fetch_all(&Kernel::get().db)
+    .await
+    .context("failed to query DB")?;
+
+    Ok(result
+        .into_iter()
+        .map(|r| r.try_into_api())
         .collect::<Result<Vec<MatchHistoryNoGames>>>()?)
 }

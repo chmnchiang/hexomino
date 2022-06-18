@@ -181,6 +181,11 @@ impl UserInner {
         }
     }
 
+    pub fn is_admin(&self) -> bool {
+        // TODO: Proper way of checking admin
+        self.username() == "admin"
+    }
+
     pub fn drop_connection(&self) {
         self.connection.drop();
     }

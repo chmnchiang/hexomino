@@ -1,4 +1,4 @@
-use std::{rc::Rc, time::Duration};
+use std::{rc::Rc, time::Duration, str::FromStr};
 
 use api::{
     JoinedRoom, LeaveRoomApi, MatchConfig, RoomActionApi, RoomActionRequest, RoomId, RoomUser,
@@ -114,12 +114,7 @@ impl Component for RoomView {
             move |event: Event| {
                 let target = event.target().expect("Input event does not have a target");
                 let select: HtmlSelectElement = target.unchecked_into();
-                let config = match select.value().as_str() {
-                    "normal" => MatchConfig::Normal,
-                    "knockout" => MatchConfig::KnockoutStage,
-                    "championship" => MatchConfig::ChampionshipStage,
-                    _ => return,
-                };
+                let Ok(config) = MatchConfig::from_str(&select.value()) else { return; };
                 let connection = connection.clone();
                 spawn_local(async move {
                     let _ = connection
@@ -154,6 +149,20 @@ impl Component for RoomView {
         let room_title = format!("Room #{}", self.room.id);
         let number_of_games = format!("{}", self.room.settings.number_of_games);
         let play_time_limit = format!("{}s", self.room.settings.play_time_limit.as_secs());
+        let config_select = html! {
+            <select onchange={config_onchange}> {
+                [(MatchConfig::Normal, "Normal Game"),
+                 (MatchConfig::KnockoutStage, "Knockout Stage"),
+                 (MatchConfig::ChampionshipStage, "Championship Stage")]
+                    .into_iter()
+                    .map(|(cf, display_name)| {
+                        let value = format!("{}", cf);
+                        let selected = cf == self.room.settings.config;
+                        html! { <option {value} {selected}>{display_name}</option> }
+                    })
+                    .collect::<Html>()
+            } </select>
+        };
         html! {
             <div>
                 <div class="columns is-centered">
@@ -174,13 +183,7 @@ impl Component for RoomView {
                                 <div class="field">
                                     <label class="label">{"Config"}</label>
                                     <div class="control">
-                                        <div class="select is-fullwidth">
-                                            <select onchange={config_onchange}>
-                                                <option value="normal" selected={true}>{"Normal game"}</option>
-                                                <option value="knockout">{"Knockout stage"}</option>
-                                                <option value="championship">{"Championship stage"}</option>
-                                            </select>
-                                        </div>
+                                        <div class="select is-fullwidth"> { config_select } </div>
                                     </div>
                                 </div>
                             </div>

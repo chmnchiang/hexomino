@@ -38,7 +38,7 @@ derive_api_data! {
         pub play_time_limit: Duration,
     }
 
-    #[derive(Copy, strum::Display, strum::EnumString, strum::IntoStaticStr)]
+    #[derive(Copy, PartialEq, Eq, strum::Display, strum::EnumString, strum::IntoStaticStr)]
     pub enum MatchConfig {
         Normal,
         KnockoutStage,

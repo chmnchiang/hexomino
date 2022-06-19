@@ -7,6 +7,7 @@ use crate::{derive_api_data, Api, User};
 derive_api_data! {
     pub struct Room {
         pub id: RoomId,
+        pub match_token: Option<MatchToken>,
         pub users: Vec<User>,
     }
     #[derive(Hash, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -20,6 +21,7 @@ derive_api_data! {
 
     pub struct JoinedRoom {
         pub id: RoomId,
+        pub match_token: Option<MatchToken>,
         pub users: Vec<RoomUser>,
         pub settings: MatchSettings,
     }
@@ -36,12 +38,15 @@ derive_api_data! {
         pub play_time_limit: Duration,
     }
 
-    #[derive(Copy)]
+    #[derive(Copy, strum::Display, strum::EnumString, strum::IntoStaticStr)]
     pub enum MatchConfig {
         Normal,
         KnockoutStage,
         ChampionshipStage,
     }
+
+    #[derive(Hash, PartialEq, Eq, derive_more::Display)]
+    pub struct MatchToken(pub String);
 }
 
 derive_api_data! {
@@ -55,6 +60,8 @@ derive_api_data! {
         RoomIsFull(RoomId),
         #[error("user is not in the room")]
         NotInRoom,
+        #[error("match token is not valid.")]
+        MatchTokenNotValid,
     }
 }
 
@@ -65,6 +72,7 @@ derive_api_data! {
     pub struct JoinRoomApi;
     pub struct LeaveRoomApi;
     pub struct CreateRoomApi;
+    pub struct CreateOrJoinMatchRoomApi;
     pub struct GetRoomApi;
     pub struct RoomActionApi;
 }
@@ -93,6 +101,13 @@ pub type CreateRoomRequest = ();
 pub type CreateRoomResponse = RoomId;
 impl Api for CreateRoomApi {
     type Request = CreateRoomRequest;
+    type Response = Result<CreateRoomResponse>;
+}
+
+pub type CreateOrJoinMatchRoomRequest = MatchToken;
+pub type CreateOrJoinMatchRoomResponse = RoomId;
+impl Api for CreateOrJoinMatchRoomApi {
+    type Request = CreateOrJoinMatchRoomRequest;
     type Response = Result<CreateRoomResponse>;
 }
 

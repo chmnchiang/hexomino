@@ -12,5 +12,6 @@ chrono = { version = "0.4.19", features = ["serde"] }
 derive_more = "0.99.17"
 hexomino-core = { version = "0.1.0", path = "../hexomino-core" }
 serde = { version = "1.0.136", features = ["derive"] }
+strum = { version = "0.24.1", features = ["derive"] }
 thiserror = "1.0.30"
 uuid = { version = "1.0.0", features = ["serde"] }

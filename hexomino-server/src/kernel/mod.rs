@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use api::{
     Api, JoinedRoom, MatchAction, MatchError, MatchHistoryNoGames, MatchState, Never, Room,
-    RoomAction, RoomError, RoomId, StartWsApi, StartWsError, StartWsRequest, UserId, WsRequest,
+    RoomAction, RoomError, RoomId, StartWsApi, StartWsError, StartWsRequest, UserId, WsRequest, MatchToken,
 };
 use axum::extract::ws::{Message, WebSocket};
 use once_cell::sync::OnceCell;
@@ -16,8 +16,9 @@ use crate::{
 };
 
 use self::{
+    match_history::{list_all_match_histories, list_user_match_histories},
     room::RoomManagerHandle,
-    user::{User, UserPool, UserStatus}, match_history::{list_user_match_histories, list_all_match_histories},
+    user::{User, UserPool, UserStatus},
 };
 
 pub mod actor;
@@ -91,11 +92,18 @@ impl Kernel {
     pub async fn join_room(&self, user: User, room_id: RoomId) -> ApiResult<(), RoomError> {
         self.room_manager.join_room(user, room_id).await
     }
-    pub async fn leave_room(&self, user: User) -> ApiResult<(), RoomError> {
-        self.room_manager.leave_room(user).await
-    }
     pub async fn create_room(&self, user: User) -> ApiResult<RoomId, RoomError> {
         self.room_manager.create_room(user).await
+    }
+    pub async fn create_or_join_match_room(
+        &self,
+        user: User,
+        match_token: MatchToken,
+    ) -> ApiResult<RoomId, RoomError> {
+        self.room_manager.create_or_join_match_room(user, match_token).await
+    }
+    pub async fn leave_room(&self, user: User) -> ApiResult<(), RoomError> {
+        self.room_manager.leave_room(user).await
     }
     pub async fn room_action(&self, user: User, action: RoomAction) -> ApiResult<(), RoomError> {
         self.room_manager.user_room_action(user, action).await

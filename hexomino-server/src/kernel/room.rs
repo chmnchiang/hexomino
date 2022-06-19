@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use api::{MatchConfig, RoomAction, RoomError, RoomId, UserId, WsResponse};
+use api::{MatchConfig, MatchToken, RoomAction, RoomError, RoomId, UserId, WsResponse};
 use itertools::Itertools;
 use parking_lot::RwLock;
 
@@ -18,7 +18,7 @@ use crate::{
 
 use super::{
     actor::{Actor, Addr, Context, Handler},
-    game::{MatchActor, to_match_settings},
+    game::{to_match_settings, MatchActor},
 };
 
 type Result<T> = ApiResult<T, RoomError>;
@@ -47,6 +47,15 @@ impl RoomManagerHandle {
     pub async fn join_room(&self, user: User, room_id: RoomId) -> Result<()> {
         self.addr.send(JoinRoom { user, room_id }).await
     }
+    pub async fn create_or_join_match_room(
+        &self,
+        user: User,
+        match_token: MatchToken,
+    ) -> Result<RoomId> {
+        self.addr
+            .send(CreateOrJoinMatchRoom { user, match_token })
+            .await
+    }
     pub async fn leave_room(&self, user: User) -> Result<()> {
         self.addr.send(LeaveRoom { user }).await
     }
@@ -60,17 +69,54 @@ impl RoomManagerHandle {
 
 struct RoomManager {
     rooms: HashMap<RoomId, Room>,
+    match_token_to_room_id: HashMap<MatchToken, RoomId>,
     counter: AtomicI64,
     cached_rooms: Arc<RwLock<Vec<api::Room>>>,
 }
 
 pub struct Room {
     id: RoomId,
+    match_token: Option<MatchToken>,
     users: Vec<RoomUser>,
     config: MatchConfig,
 }
 
 const CACHED_ROOMS_UPDATE_INTERVAL: u64 = 3;
+
+impl RoomManager {
+    fn create_and_join_room(
+        &mut self,
+        user: User,
+        match_token: Option<MatchToken>,
+    ) -> Result<RoomId> {
+        let user_clone = user.clone();
+        let mut user_state = user.state().write();
+        let UserStatus::Idle = user_state.status else { return Err(RoomError::UserBusy)? };
+
+        let room_id = RoomId(self.counter.fetch_add(1, Ordering::Relaxed));
+        let mut room = Room::new(room_id, match_token);
+        room.user_enter(user_clone)?;
+        self.rooms.insert(room_id, room);
+        user_state.status = UserStatus::InRoom(room_id);
+
+        drop(user_state);
+        user.send_status_update();
+        Ok(room_id)
+    }
+
+    fn join_room(&mut self, user: User, room_id: RoomId) -> Result<()> {
+        let mut user_state = user.state().write();
+        let UserStatus::Idle = user_state.status else { return Err(RoomError::UserBusy)? };
+
+        let room = self.get_mut(room_id)?;
+        room.user_enter(user.clone())?;
+        user_state.status = UserStatus::InRoom(room_id);
+        drop(user_state);
+        user.send_status_update();
+        room.broadcast_update();
+        Ok(())
+    }
+}
 
 impl Actor for RoomManager {
     fn started(&mut self, ctx: &Context<Self>) {
@@ -91,20 +137,7 @@ impl Handler<CreateRoom> for RoomManager {
 
     #[tracing::instrument(skip_all, fields(action = "CreateRoom", user = ?msg.user.username()), ret)]
     fn handle(&mut self, msg: CreateRoom, _ctx: &Context<Self>) -> Self::Output {
-        let user = msg.user;
-        let user_clone = user.clone();
-        let mut user_state = user.state().write();
-        let UserStatus::Idle = user_state.status else { return Err(RoomError::UserBusy)? };
-
-        let room_id = RoomId(self.counter.fetch_add(1, Ordering::Relaxed));
-        let mut room = Room::new(room_id);
-        room.user_enter(user_clone)?;
-        self.rooms.insert(room_id, room);
-        user_state.status = UserStatus::InRoom(room_id);
-
-        drop(user_state);
-        user.send_status_update();
-        Ok(room_id)
+        self.create_and_join_room(msg.user, None)
     }
 }
 
@@ -119,18 +152,46 @@ impl Handler<JoinRoom> for RoomManager {
 
     #[tracing::instrument(skip_all, fields(action = "JoinRoom", user = ?msg.user.username(), room = ?msg.room_id), ret)]
     fn handle(&mut self, msg: JoinRoom, _ctx: &Context<Self>) -> Self::Output {
-        let mut user_state = msg.user.state().write();
-        let UserStatus::Idle = user_state.status else { return Err(RoomError::UserBusy)? };
-
-        let room_id = msg.room_id;
-        let room = self.get_mut(room_id)?;
-        room.user_enter(msg.user.clone())?;
-        user_state.status = UserStatus::InRoom(room_id);
-        drop(user_state);
-        msg.user.send_status_update();
-        room.broadcast_update();
-        Ok(())
+        self.join_room(msg.user, msg.room_id)
     }
+}
+
+#[derive(Debug)]
+struct CreateOrJoinMatchRoom {
+    user: User,
+    match_token: MatchToken,
+}
+
+impl Handler<CreateOrJoinMatchRoom> for RoomManager {
+    type Output = Result<RoomId>;
+
+    #[tracing::instrument(skip_all, fields(action = "CreateOrJoinMatchRoom",
+            user = ?msg.user.username(), match_token = ?msg.match_token), ret)]
+    fn handle(&mut self, msg: CreateOrJoinMatchRoom, _ctx: &Context<Self>) -> Self::Output {
+        let CreateOrJoinMatchRoom { user, match_token } = msg;
+        if !match_token_is_valid(&match_token) {
+            Err(RoomError::MatchTokenNotValid)?;
+        }
+        let room_id = match self.match_token_to_room_id.get(&match_token).copied() {
+            Some(room_id) => {
+                self.join_room(user, room_id)?;
+                room_id
+            }
+            None => {
+                let room_id = self.create_and_join_room(user, Some(match_token.clone()))?;
+                self.match_token_to_room_id.insert(match_token, room_id);
+                room_id
+            }
+        };
+        Ok(room_id)
+    }
+}
+
+fn match_token_is_valid(match_token: &MatchToken) -> bool {
+    let token = &match_token.0;
+    return !token.is_empty()
+        && token.len() <= 10
+        && token.chars().all(|c| c.is_ascii_alphanumeric());
 }
 
 #[derive(Debug)]
@@ -155,7 +216,8 @@ impl Handler<LeaveRoom> for RoomManager {
         msg.user.send_status_update();
 
         if room.users.is_empty() {
-            self.remove_room(room_id);
+            let match_token = room.match_token.clone();
+            self.remove_room(room_id, match_token);
         } else {
             room.broadcast_update();
         }
@@ -199,7 +261,8 @@ impl Handler<UserRoomAction> for RoomManager {
 
         let should_remove = room.room_action(msg.user.id(), msg.action)?;
         if should_remove {
-            self.remove_room(room_id);
+            let match_token = room.match_token.clone();
+            self.remove_room(room_id, match_token);
         }
         Ok(())
     }
@@ -223,6 +286,7 @@ impl RoomManager {
     fn new() -> Self {
         Self {
             rooms: HashMap::new(),
+            match_token_to_room_id: HashMap::new(),
             counter: AtomicI64::new(0),
             cached_rooms: Arc::new(RwLock::new(vec![])),
         }
@@ -239,15 +303,21 @@ impl RoomManager {
         *self.cached_rooms.write() = self.rooms.values().map(|room| room.to_api()).collect_vec()
     }
 
-    fn remove_room(&mut self, room_id: RoomId) {
+    fn remove_room(&mut self, room_id: RoomId, match_token: Option<MatchToken>) {
+        if let Some(match_token) = match_token {
+            self.match_token_to_room_id
+                .remove(&match_token)
+                .expect("match token is not in the hashmap");
+        }
         self.rooms.remove(&room_id);
     }
 }
 
 impl Room {
-    fn new(id: RoomId) -> Self {
+    fn new(id: RoomId, match_token: Option<MatchToken>) -> Self {
         Self {
             id,
+            match_token,
             users: vec![],
             config: MatchConfig::Normal,
         }
@@ -256,6 +326,7 @@ impl Room {
     fn to_api(&self) -> api::Room {
         api::Room {
             id: self.id,
+            match_token: self.match_token.clone(),
             users: self
                 .users
                 .iter()
@@ -267,6 +338,7 @@ impl Room {
     fn to_joined_room(&self) -> api::JoinedRoom {
         api::JoinedRoom {
             id: self.id,
+            match_token: self.match_token.clone(),
             users: self.users.iter().map(|user| user.to_api()).collect_vec(),
             settings: to_match_settings(self.config),
         }
@@ -299,7 +371,12 @@ impl Room {
     fn start_game(&self) {
         let users = [&self.users[0].user, &self.users[1].user];
         let user_states = User::lock_both_user_states(users);
-        let game = MatchActor::new(users.map(|x| x.clone()), self.config).start();
+        let game = MatchActor::new(
+            users.map(|x| x.clone()),
+            self.config,
+            self.match_token.clone(),
+        )
+        .start();
         tracing::info!("game start: id = {}", game.id());
 
         for mut state in user_states {

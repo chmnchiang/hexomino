@@ -14,7 +14,7 @@ use self::{
     match_history::list_user_match_histories_handler,
     room::{
         create_room_handler, get_room_handler, join_room_handler, leave_room_handler,
-        list_rooms_handler, room_action_handler,
+        list_rooms_handler, room_action_handler, create_or_join_match_room_handler,
     },
 };
 
@@ -31,6 +31,7 @@ pub fn routes() -> Router {
         .route("/room", post(get_room_handler))
         .route("/room/create", post(create_room_handler))
         .route("/room/join", post(join_room_handler))
+        .route("/room/join_match", post(create_or_join_match_room_handler))
         .route("/room/leave", post(leave_room_handler))
         .route("/room/action", post(room_action_handler))
         .route("/game/sync", post(sync_match_handler))

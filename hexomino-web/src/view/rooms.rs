@@ -1,23 +1,30 @@
-use api::{CreateRoomApi, JoinRoomApi, ListRoomsApi};
+use api::{CreateOrJoinMatchRoomApi, CreateRoomApi, JoinRoomApi, ListRoomsApi, MatchToken};
 use gloo::timers::callback::Interval;
 use itertools::Itertools;
 
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlInputElement, InputEvent};
-use yew::{html, html::Scope, Component, Context, Html};
+use yew::{classes, html, html::Scope, Component, Context, Html, NodeRef};
 
 use crate::{context::ScopeExt, util::ResultExt};
+
+use super::common::match_token_html;
 
 pub struct RoomsView {
     fetched_rooms: Vec<api::Room>,
     filter: String,
+    modal_is_opened: bool,
+    match_token_input_ref: NodeRef,
     _refresh_rooms_timer: Interval,
 }
 
 pub enum RoomsMsg {
     OnReceiveRooms(Vec<api::Room>),
     UpdateRooms,
+    OpenModal,
+    CloseModal,
+    JoinMatchRoom,
     UpdateFilter(String),
 }
 
@@ -36,6 +43,8 @@ impl Component for RoomsView {
         Self {
             fetched_rooms: vec![],
             filter: String::new(),
+            modal_is_opened: false,
+            match_token_input_ref: NodeRef::default(),
             _refresh_rooms_timer: refresh_rooms_timer,
         }
     }
@@ -55,11 +64,39 @@ impl Component for RoomsView {
                 self.filter = text;
                 true
             }
+            OpenModal => {
+                self.modal_is_opened = true;
+                true
+            }
+            CloseModal => {
+                self.modal_is_opened = false;
+                let input = self
+                    .match_token_input_ref
+                    .cast::<HtmlInputElement>()
+                    .expect("can't cast the ref to input element");
+                input.set_value("");
+                true
+            }
+            JoinMatchRoom => {
+                let input = self
+                    .match_token_input_ref
+                    .cast::<HtmlInputElement>()
+                    .expect("can't cast the ref to input element");
+                let match_token = input.value();
+                let connection = ctx.link().connection();
+                spawn_local(async move {
+                    let result = connection
+                        .post_api::<CreateOrJoinMatchRoomApi>(
+                            "/api/room/join_match",
+                            MatchToken(match_token),
+                        )
+                        .await
+                        .log_err();
+                    let result = result.log_err();
+                });
+                false
+            }
         }
-    }
-
-    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
-        if first_render {}
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
@@ -78,6 +115,8 @@ impl Component for RoomsView {
                 });
             }
         };
+        let join_match_onclick = ctx.link().callback(|_| RoomsMsg::OpenModal);
+
         let refresh_onclick = link.callback(|_| RoomsMsg::UpdateRooms);
         let search_oninput = link.callback(|event: InputEvent| {
             let target = event.target().expect("Input event does not have a target");
@@ -106,15 +145,18 @@ impl Component for RoomsView {
                 let player_cnt_str = format!("{}/2", room.users.len());
                 html! {
                     <tr>
-                        <td style="vertical-align: middle; width: 20%">{id_str}</td>
+                        <td style="vertical-align: middle;">{id_str}</td>
+                        <td style="vertical-align: middle;">{
+                            match_token_html(&room.match_token, false)
+                        }</td>
                         <td style="vertical-align: middle">{users}</td>
-                        <td style="vertical-align: middle; width: 80px">
+                        <td style="vertical-align: middle;">
                             <span class="icon">
                                 <i class="fa-solid fa-user"></i>
                             </span>
                             <span> { player_cnt_str } </span>
                         </td>
-                        <td style="text-align: right; width: 0%">
+                        <td style="text-align: right;">
                             <button class="button is-success" style={(room.users.len() == 2).then_some("visibility: hidden")}
                                 onclick={join_callback}>{"Join"}</button>
                         </td>
@@ -128,6 +170,9 @@ impl Component for RoomsView {
                 return true;
             }
             if room.id.to_string().contains(filter_str) {
+                return true;
+            }
+            if room.match_token.is_some_and(|t| t.0.contains(filter_str)) {
                 return true;
             }
             if room.users.iter().any(|user| user.name.contains(filter_str)) {
@@ -146,59 +191,96 @@ impl Component for RoomsView {
         });
 
         html! {
-            <div class="columns is-centered">
-                <div class="column is-half">
-                    <div class="buttons">
-                        <button class="button is-primary" onclick={create_room_onclick}>
-                            <span class="icon">
-                                <i class="fa-solid fa-plus"></i>
-                            </span>
-                            <span> {"Create room"} </span>
-                        </button>
-                        <button class="button is-primary">
-                            <span class="icon">
-                                <i class="fa-solid fa-right-to-bracket"></i>
-                            </span>
-                            <span> {"Join a match room"} </span>
-                        </button>
-                        <button class="button" style="margin-left: auto;" onclick={refresh_onclick}>
-                            <span class="icon">
-                                <i class="fa-solid fa-arrow-rotate-right"></i>
-                            </span>
-                        </button>
+            <>
+                <div class="columns is-centered">
+                    <div class="column is-two-thirds">
+                        <div class="buttons">
+                            <button class="button is-primary" onclick={create_room_onclick}>
+                                <span class="icon">
+                                    <i class="fa-solid fa-plus"></i>
+                                </span>
+                                <span> {"Create room"} </span>
+                            </button>
+                            <button class="button is-primary" onclick={join_match_onclick}>
+                                <span class="icon">
+                                    <i class="fa-solid fa-right-to-bracket"></i>
+                                </span>
+                                <span> {"Join a match room"} </span>
+                            </button>
+                            <button class="button" style="margin-left: auto;" onclick={refresh_onclick}>
+                                <span class="icon">
+                                    <i class="fa-solid fa-arrow-rotate-right"></i>
+                                </span>
+                                <span> {"Refresh rooms"} </span>
+                            </button>
+                        </div>
+                        <h3 class="title">{"Public Rooms"}</h3>
+                        <div class="field">
+                            <p class="control has-icons-left">
+                                <input class="input" placeholder="Search room by ID, match token, or user"
+                                  oninput={search_oninput}/>
+                                <span class="icon is-small is-left">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                </span>
+                            </p>
+                        </div>
+                        <table class="table is-fullwidth is-hoverable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 15%">{"Room ID"}</th>
+                                    <th style="width: 25%; min-width: 180px;">{"Match type"}</th>
+                                    <th>{"Users"}</th>
+                                    <th style="width: 80px"></th>
+                                    <th style="width: 80px"></th>
+                                </tr>
+                            </thead>
+                            <tbody> {
+                                rooms.into_iter()
+                                    .map(room_to_html)
+                                    .collect::<Html>()
+                            } </tbody>
+                        </table>
                     </div>
-                    <h3 class="title">{"Public Rooms"}</h3>
-                    <div class="field">
-                        <p class="control has-icons-left">
-                            <input class="input" placeholder="Search room by ID or user"
-                              oninput={search_oninput}/>
-                            <span class="icon is-small is-left">
-                                <i class="fa-solid fa-magnifying-glass"></i>
-                            </span>
-                        </p>
-                    </div>
-                    <table class="table is-fullwidth is-hoverable">
-                        <thead>
-                            <tr>
-                                <th>{"Room ID"}</th>
-                                <th>{"Users"}</th>
-                                <th></th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody> {
-                            rooms.into_iter()
-                                .map(room_to_html)
-                                .collect::<Html>()
-                        } </tbody>
-                    </table>
                 </div>
-            </div>
+                { self.join_match_room_modal(ctx) }
+            </>
         }
     }
 }
 
 impl RoomsView {
+    fn join_match_room_modal(&self, context: &Context<Self>) -> Html {
+        let join_onclick = context.link().callback(|_| RoomsMsg::JoinMatchRoom);
+        let cancel_onclick = context.link().callback(|_| RoomsMsg::CloseModal);
+        html! {
+            <div class={classes!("modal", self.modal_is_opened.then_some("is-active"))}>
+                <div class="modal-background"></div>
+                <div class="modal-content">
+                    <div class="box">
+                        <h3 class="subtitle">{"Join a match room"}</h3>
+                        <div style="display: flex; justify-content: space-between">
+                            <div class="field has-addons">
+                                <div class="control">
+                                    <input class="input" type="text" placeholder="Match room token"
+                                        ref={self.match_token_input_ref.clone()}/>
+                                </div>
+                                <div class="control">
+                                    <button class="button is-info" onclick={join_onclick}>{"Join match"}</button>
+                                </div>
+                            </div>
+                            <div class="control" style="margin-left: 20px">
+                                <button class="button is-danger" onclick={cancel_onclick}>
+                                    <span class="icon"><i class="fa-solid fa-xmark"></i></span>
+                                    <span>{"Cancel"}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
     fn update_rooms(link: Scope<Self>) {
         let connection = link.connection();
         let callback = link.callback(RoomsMsg::OnReceiveRooms);

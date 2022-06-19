@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use crate::{derive_api_data, Api, MatchId};
+use crate::{derive_api_data, Api, MatchId, MatchConfig, MatchToken};
 
 derive_api_data! {
     pub struct MatchHistoryNoGames {
@@ -9,6 +9,8 @@ derive_api_data! {
         pub user_is_first: bool,
         pub scores: [u32; 2],
         pub end_time: DateTime<Utc>,
+        pub config: Option<MatchConfig>,
+        pub match_token: Option<MatchToken>,
     }
 }
 

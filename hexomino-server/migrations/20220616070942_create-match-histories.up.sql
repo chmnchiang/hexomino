@@ -3,6 +3,8 @@ CREATE TABLE MatchHistories(
   users uuid ARRAY[2] NOT NULL,
   scores integer ARRAY[2] NOT NULL,
   end_time TIMESTAMP WITH TIME ZONE NOT NULL,
+  config TEXT,
+  match_token TEXT,
   game_histories uuid ARRAY NOT NULL
 );
 

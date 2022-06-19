@@ -1,10 +1,12 @@
-use api::{ListUserMatchHistoriesApi, MatchHistoryNoGames};
+use api::{ListUserMatchHistoriesApi, MatchHistoryNoGames, MatchConfig};
 use wasm_bindgen_futures::spawn_local;
 use yew::{
     function_component, html, use_context, use_effect, use_effect_with_deps, use_state, Html,
 };
 
 use crate::{context::MainContext, util::ResultExt};
+
+use super::common::match_token_html;
 
 #[function_component(MatchHistoryView)]
 pub fn match_history_view(_props: &()) -> Html {
@@ -37,10 +39,18 @@ pub fn match_history_view(_props: &()) -> Html {
             user_is_first,
             scores,
             end_time,
+            config,
+            match_token,
         }: &MatchHistoryNoGames,
     ) -> Html {
         let user_0_win = scores[0] > scores[1];
         let user_1_win = scores[1] > scores[0];
+        let config = match config {
+            Some(MatchConfig::Normal) => "Normal",
+            Some(MatchConfig::KnockoutStage) => "Knockout",
+            Some(MatchConfig::ChampionshipStage) => "Championship",
+            None => "?",
+        };
         html! {
             <tr>
                 <td style="text-align: right" class={user_is_first.then_some("my-score")}>
@@ -59,6 +69,8 @@ pub fn match_history_view(_props: &()) -> Html {
                     }
                 </td>
                 <td>{end_time.format("%F %R")}</td>
+                <td>{match_token_html(match_token, false)}</td>
+                <td>{config}</td>
             </tr>
         }
     }
@@ -75,6 +87,8 @@ pub fn match_history_view(_props: &()) -> Html {
                             <th style="width: 0%"></th>
                             <th>{"User 2"}</th>
                             <th>{"Match end time"}</th>
+                            <th>{"Match type"}</th>
+                            <th>{"Match configuration"}</th>
                         </tr>
                     </thead>
                     <tbody> {

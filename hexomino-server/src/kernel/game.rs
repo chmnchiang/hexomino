@@ -2,7 +2,7 @@ use std::{cmp::Ordering, sync::Arc, time::Duration};
 
 use api::{
     GameEndReason, GameInnerState, MatchAction, MatchConfig, MatchEndInfo, MatchError, MatchEvent,
-    MatchId, MatchInnerState, MatchSettings, MatchWinner, UserId, UserPlay, WsResponse,
+    MatchId, MatchInnerState, MatchSettings, MatchToken, MatchWinner, UserId, UserPlay, WsResponse,
 };
 use chrono::{DateTime, Utc};
 use hexomino_core::{Action, Player, State as GameState};
@@ -13,7 +13,7 @@ use crate::result::ApiResult;
 
 use super::{
     actor::{Actor, Addr, Context, Handler},
-    match_history::MatchHistory,
+    match_history::{self, MatchHistory},
     user::{User, UserStatus},
 };
 
@@ -51,6 +51,7 @@ pub struct MatchActor {
 pub struct MatchInfo {
     id: MatchId,
     settings: MatchSettings,
+    match_token: Option<MatchToken>,
     user_data: [api::User; 2],
 }
 
@@ -86,12 +87,18 @@ enum MatchPhase {
 
 const MATCH_START_WAIT_TIME: Duration = Duration::from_secs(1);
 const LEEWAY: Duration = Duration::from_secs(2);
-const BETWEEN_GAME_DELAY: Duration = Duration::from_secs(5);
+const BETWEEN_GAME_DELAY: Duration = Duration::from_secs(10);
 
 impl MatchActor {
-    pub fn new(users: [User; 2], config: MatchConfig) -> Self {
-        let info = MatchInfo::new(&users, config);
-        let history = MatchHistory::new(info.id, info.user_data.clone().map(|u| u.id));
+    pub fn new(users: [User; 2], config: MatchConfig, match_token: Option<MatchToken>) -> Self {
+        let info = MatchInfo::new(&users, config, match_token.clone());
+        let history_info = match_history::MatchInfo {
+            id: info.id,
+            users: info.user_data.clone().map(|u| u.id),
+            config,
+            match_token,
+        };
+        let history = MatchHistory::new(history_info);
         Self {
             info: Arc::new(info),
             users,
@@ -191,7 +198,9 @@ impl MatchActor {
         let state = &mut self.state;
         let score = &mut state.player_states[user_idx].score;
         *score += 1;
-        let match_is_end = *score > self.info.settings.number_of_games / 2;
+        let number_of_games = self.info.settings.number_of_games;
+        let match_is_end =
+            *score > number_of_games / 2 || state.game_idx >= number_of_games as i32 - 1;
         state.phase = if match_is_end {
             MatchPhase::MatchEnded
         } else {
@@ -459,10 +468,11 @@ pub fn to_match_settings(config: MatchConfig) -> MatchSettings {
 }
 
 impl MatchInfo {
-    fn new(users: &[User; 2], config: MatchConfig) -> Self {
+    fn new(users: &[User; 2], config: MatchConfig, match_token: Option<MatchToken>) -> Self {
         Self {
             id: MatchId(Uuid::new_v4()),
             settings: to_match_settings(config),
+            match_token,
             user_data: users.each_ref().map(|u| u.to_api()),
         }
     }

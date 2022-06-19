@@ -11,7 +11,7 @@ use yew::{html, Component, Context, Html};
 
 use crate::{
     context::{connection::ws::WsListenerToken, ScopeExt},
-    util::ResultExt,
+    util::ResultExt, view::common::match_token_html,
 };
 
 pub struct RoomView {
@@ -48,6 +48,7 @@ impl Component for RoomView {
         Self {
             room: JoinedRoom {
                 id: RoomId(0),
+                match_token: None,
                 users: vec![],
                 settings: MatchSettings {
                     config: MatchConfig::Normal,
@@ -153,12 +154,12 @@ impl Component for RoomView {
         let room_title = format!("Room #{}", self.room.id);
         let number_of_games = format!("{}", self.room.settings.number_of_games);
         let play_time_limit = format!("{}s", self.room.settings.play_time_limit.as_secs());
-
         html! {
             <div>
                 <div class="columns is-centered">
                     <div class="column is-half">
-                        <h2 class="title">{room_title}</h2>
+                        <h2 class="title"> {room_title} </h2>
+                        <p class="subtitle"> { match_token_html(&self.room.match_token, true) } </p>
                         <hr/>
                         <h2 class="title is-4" style="margin-bottom: 1rem">{"Users"}</h2>
                         <table class="table is-fullwidth is-hoverable is-bordered">

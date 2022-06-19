@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use anyhow::{Context, Result};
-use api::{GameEndReason, MatchHistoryNoGames, MatchId, Never, UserId};
+use api::{GameEndReason, MatchConfig, MatchHistoryNoGames, MatchId, MatchToken, Never, UserId};
 use chrono::{DateTime, Utc};
 use hexomino_core::{Action, Player};
 use uuid::Uuid;
@@ -9,10 +11,16 @@ use crate::result::ApiResult;
 use super::{user::unwrap_name_or_unnamed, Kernel};
 
 pub struct MatchHistory {
-    id: MatchId,
-    users: [UserId; 2],
+    info: MatchInfo,
     scores: [u32; 2],
     games: Vec<GameHistory>,
+}
+
+pub struct MatchInfo {
+    pub id: MatchId,
+    pub users: [UserId; 2],
+    pub config: MatchConfig,
+    pub match_token: Option<MatchToken>,
 }
 
 struct GameHistory {
@@ -23,10 +31,9 @@ struct GameHistory {
 }
 
 impl MatchHistory {
-    pub fn new(id: MatchId, users: [UserId; 2]) -> Self {
+    pub fn new(info: MatchInfo) -> Self {
         Self {
-            id,
-            users,
+            info,
             scores: [0, 0],
             games: vec![],
         }
@@ -56,6 +63,7 @@ impl MatchHistory {
     pub async fn save(self, end_time: DateTime<Utc>) -> Result<()> {
         let mut tx = Kernel::get().db.begin().await?;
 
+        let info = self.info;
         let mut game_ids = vec![];
         for game in self.games {
             let result = sqlx::query!(
@@ -65,7 +73,7 @@ impl MatchHistory {
                 VALUES ($1, $2, $3, $4)
                 RETURNING id;
                 "#,
-                self.id.0,
+                info.id.0,
                 game.first_user_player != Player::First,
                 game.winner == Player::First,
                 serde_json::to_string(&game.actions)?,
@@ -76,18 +84,22 @@ impl MatchHistory {
             game_ids.push(result.id);
         }
 
-        let users = self.users.map(|u| u.0);
+        let users = info.users.map(|u| u.0);
         let scores = self.scores.map(|x| x as i32);
+        let config: &'static str = info.config.into();
 
         sqlx::query!(
             r#"
-            INSERT INTO MatchHistories(id, users, scores, end_time, game_histories)
-            VALUES ($1, $2, $3, $4, $5);
+            INSERT INTO MatchHistories(id, users, scores, end_time, config,
+                match_token, game_histories)
+            VALUES ($1, $2, $3, $4, $5, $6, $7);
             "#,
-            self.id.0,
+            info.id.0,
             users.as_slice(),
             scores.as_slice(),
             end_time,
+            config,
+            info.match_token.map(|tk| tk.0),
             &game_ids,
         )
         .execute(&mut tx)
@@ -100,9 +112,9 @@ impl MatchHistory {
                 ($1, $3),
                 ($2, $3);
             "#,
-            self.users[0].0,
-            self.users[1].0,
-            self.id.0,
+            info.users[0].0,
+            info.users[1].0,
+            info.id.0,
         )
         .execute(&mut tx)
         .await?;
@@ -119,6 +131,8 @@ struct Record {
     user1: Option<String>,
     scores: Vec<i32>,
     end_time: DateTime<Utc>,
+    config: Option<String>,
+    match_token: Option<String>,
 }
 
 impl Record {
@@ -133,28 +147,37 @@ impl Record {
             .map_err(|_| anyhow::anyhow!("failed to covert scores to [u32; 2]"))?
             .map(|x| x as u32);
         let end_time = self.end_time;
+        let config = self.config.and_then(|c| MatchConfig::from_str(&c).ok());
+        let match_token = self.match_token.map(MatchToken);
         Ok(MatchHistoryNoGames {
             id,
             user_is_first,
             users: [user0, user1],
             scores,
             end_time,
+            config,
+            match_token,
         })
     }
 }
 
 pub async fn list_user_match_histories(user: UserId) -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
-    let result = sqlx::query_as!(Record, r#"
+    let result = sqlx::query_as!(
+        Record,
+        r#"
         SELECT mh.id AS id, u0.name AS user0, u1.name AS user1,
-        mh.scores AS scores, u0.id = $1 AS user_is_first, mh.end_time AS end_time
+        mh.scores AS scores, u0.id = $1 AS user_is_first, mh.end_time AS end_time,
+        mh.config AS config, mh.match_token AS match_token
         FROM UserHistories
         JOIN MatchHistories mh ON mh.id = UserHistories.match_id
         JOIN Users u0 ON mh.users[1] = u0.id
         JOIN Users u1 ON mh.users[2] = u1.id
         WHERE UserHistories.user_id = $1
-        ORDER BY mh.end_time
+        ORDER BY mh.end_time DESC
         LIMIT 50;
-    "#, user.0,)
+    "#,
+        user.0,
+    )
     .fetch_all(&Kernel::get().db)
     .await
     .context("failed to query DB")?;
@@ -166,15 +189,19 @@ pub async fn list_user_match_histories(user: UserId) -> ApiResult<Vec<MatchHisto
 }
 
 pub async fn list_all_match_histories() -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
-    let result = sqlx::query_as!(Record, r#"
+    let result = sqlx::query_as!(
+        Record,
+        r#"
         SELECT mh.id AS id, u0.name AS user0, u1.name AS user1,
-        mh.scores AS scores, TRUE AS user_is_first, mh.end_time AS end_time
+        mh.scores AS scores, TRUE AS user_is_first, mh.end_time AS end_time,
+        mh.config AS config, mh.match_token AS match_token
         FROM UserHistories
         JOIN MatchHistories mh ON mh.id = UserHistories.match_id
         JOIN Users u0 ON mh.users[1] = u0.id
         JOIN Users u1 ON mh.users[2] = u1.id
-        ORDER BY mh.end_time
-    "#)
+        ORDER BY mh.end_time DESC;
+    "#
+    )
     .fetch_all(&Kernel::get().db)
     .await
     .context("failed to query DB")?;

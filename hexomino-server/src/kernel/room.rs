@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use api::{RoomAction, RoomError, RoomId, UserId, WsResponse};
+use api::{MatchConfig, RoomAction, RoomError, RoomId, UserId, WsResponse};
 use itertools::Itertools;
 use parking_lot::RwLock;
 
@@ -18,7 +18,7 @@ use crate::{
 
 use super::{
     actor::{Actor, Addr, Context, Handler},
-    game::MatchActor,
+    game::{MatchActor, to_match_settings},
 };
 
 type Result<T> = ApiResult<T, RoomError>;
@@ -67,6 +67,7 @@ struct RoomManager {
 pub struct Room {
     id: RoomId,
     users: Vec<RoomUser>,
+    config: MatchConfig,
 }
 
 const CACHED_ROOMS_UPDATE_INTERVAL: u64 = 3;
@@ -245,7 +246,11 @@ impl RoomManager {
 
 impl Room {
     fn new(id: RoomId) -> Self {
-        Self { id, users: vec![] }
+        Self {
+            id,
+            users: vec![],
+            config: MatchConfig::Normal,
+        }
     }
 
     fn to_api(&self) -> api::Room {
@@ -263,6 +268,7 @@ impl Room {
         api::JoinedRoom {
             id: self.id,
             users: self.users.iter().map(|user| user.to_api()).collect_vec(),
+            settings: to_match_settings(self.config),
         }
     }
 
@@ -293,7 +299,7 @@ impl Room {
     fn start_game(&self) {
         let users = [&self.users[0].user, &self.users[1].user];
         let user_states = User::lock_both_user_states(users);
-        let game = MatchActor::new(users.map(|x| x.clone())).start();
+        let game = MatchActor::new(users.map(|x| x.clone()), self.config).start();
         tracing::info!("game start: id = {}", game.id());
 
         for mut state in user_states {
@@ -318,6 +324,9 @@ impl Room {
             }
             RoomAction::UndoReady => {
                 user.is_ready = false;
+            }
+            RoomAction::SetConfig(config) => {
+                self.config = config;
             }
         }
         self.broadcast_update();

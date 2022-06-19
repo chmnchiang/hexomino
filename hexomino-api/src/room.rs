@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use thiserror::Error;
 
 use crate::{derive_api_data, Api, User};
@@ -19,11 +21,26 @@ derive_api_data! {
     pub struct JoinedRoom {
         pub id: RoomId,
         pub users: Vec<RoomUser>,
+        pub settings: MatchSettings,
     }
 
     pub enum RoomAction {
         Ready,
         UndoReady,
+        SetConfig(MatchConfig),
+    }
+
+    pub struct MatchSettings {
+        pub config: MatchConfig,
+        pub number_of_games: u32,
+        pub play_time_limit: Duration,
+    }
+
+    #[derive(Copy)]
+    pub enum MatchConfig {
+        Normal,
+        KnockoutStage,
+        ChampionshipStage,
     }
 }
 

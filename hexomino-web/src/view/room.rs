@@ -1,7 +1,12 @@
-use std::rc::Rc;
+use std::{rc::Rc, time::Duration};
 
-use api::{JoinedRoom, RoomActionApi, RoomActionRequest, RoomId, RoomUser, WsResponse, WsResult, LeaveRoomApi};
+use api::{
+    JoinedRoom, LeaveRoomApi, MatchConfig, RoomActionApi, RoomActionRequest, RoomId, RoomUser,
+    WsResponse, WsResult, MatchSettings,
+};
+use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
+use web_sys::{Event, HtmlSelectElement};
 use yew::{html, Component, Context, Html};
 
 use crate::{
@@ -44,6 +49,11 @@ impl Component for RoomView {
             room: JoinedRoom {
                 id: RoomId(0),
                 users: vec![],
+                settings: MatchSettings {
+                    config: MatchConfig::Normal,
+                    number_of_games: 0,
+                    play_time_limit: Duration::from_secs(0),
+                },
             },
             _ws_listener_token: ws_listener_token,
         }
@@ -98,17 +108,42 @@ impl Component for RoomView {
             }
         };
 
+        let config_onchange = {
+            let connection = ctx.link().connection();
+            move |event: Event| {
+                let target = event.target().expect("Input event does not have a target");
+                let select: HtmlSelectElement = target.unchecked_into();
+                let config = match select.value().as_str() {
+                    "normal" => MatchConfig::Normal,
+                    "knockout" => MatchConfig::KnockoutStage,
+                    "championship" => MatchConfig::ChampionshipStage,
+                    _ => return,
+                };
+                let connection = connection.clone();
+                spawn_local(async move {
+                    let _ = connection
+                        .post_api::<RoomActionApi>(
+                            "/api/room/action",
+                            RoomActionRequest::SetConfig(config),
+                        )
+                        .await
+                        .log_err();
+                });
+            }
+        };
+
         fn user_to_html(user: &RoomUser) -> Html {
             html! {
                 <tr>
-                    <td> {
-                        user.user.name.clone()
-                    } </td>
-                    <td style="text-align: right;"> {
+                    <td>
+                        <span class="icon"><i class="fa-solid fa-user"></i></span>
+                        { user.user.name.clone() }
+                    </td>
+                    <td style="text-align: center; width: 25%; min-width: 100px;"> {
                         if user.is_ready {
                             html! { <span class="tag is-success">{"Ready"}</span> }
                         } else {
-                            html! {}
+                            html! { <span class="tag is-warning">{"Not Ready"}</span> }
                         }
                     } </td>
                 </tr>
@@ -116,42 +151,62 @@ impl Component for RoomView {
         }
 
         let room_title = format!("Room #{}", self.room.id);
+        let number_of_games = format!("{}", self.room.settings.number_of_games);
+        let play_time_limit = format!("{}s", self.room.settings.play_time_limit.as_secs());
 
         html! {
             <div>
                 <div class="columns is-centered">
                     <div class="column is-half">
                         <h2 class="title">{room_title}</h2>
-                        <table class="table is-fullwidth is-hoverable">
-                            <thead>
-                                <tr>
-                                    <th>{"Users"}</th>
-                                    <th style="width: 25%;"></th>
-                                </tr>
-                            </thead>
+                        <hr/>
+                        <h2 class="title is-4" style="margin-bottom: 1rem">{"Users"}</h2>
+                        <table class="table is-fullwidth is-hoverable is-bordered">
                             <tbody> {
                                 self.room.users.iter().map(user_to_html).collect::<Html>()
                             } </tbody>
                         </table>
-                    </div>
-                </div>
-                <div class="columns is-centered">
-                    if !self.self_is_ready(ctx) {
-                        <div class="column is-half">
+                        <hr/>
+                        <h2 class="title is-4" style="margin-bottom: 1rem">{"Game Settings"}</h2>
+                        <div class="columns">
+                            <div class="column is-half">
+                                <div class="field">
+                                    <label class="label">{"Config"}</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select onchange={config_onchange}>
+                                                <option value="normal" selected={true}>{"Normal game"}</option>
+                                                <option value="knockout">{"Knockout stage"}</option>
+                                                <option value="championship">{"Championship stage"}</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="column is-half">
+                                <ul style="list-style-type: disc; list-style-position: inside;">
+                                    <li> <b style="margin-right: 10px;">{"Number of games:"}</b> {number_of_games} </li>
+                                    <li> <b style="margin-right: 10px;">{"Time limit:"}</b> {play_time_limit} </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <hr/>
+                        if !self.self_is_ready(ctx) {
                             <button class="button is-medium is-fullwidth is-success" onclick={on_ready_click}>{"Ready"}</button>
-                        </div>
-                    } else {
-                        <div class="column is-half">
+                        } else {
                             <button class="button is-medium is-fullwidth is-warning" onclick={on_undo_ready_click}>{"Undo Ready"}</button>
-                        </div>
-                    }
-                </div>
-                <div class="columns is-centered">
-                    <div class="column is-half">
-                        <button class="button is-medium is-fullwidth is-warning" onclick={on_leave_click}>
+                        }
+                        <button class="button is-medium is-fullwidth is-danger"
+                            style="margin-top: 1rem;" onclick={on_leave_click}>
                             <span class="icon"><i class="fa-solid fa-arrow-right-from-bracket"></i></span>
                             <span>{"Leave room"}</span>
                         </button>
+                    </div>
+                </div>
+                <div class="columns is-centered">
+                </div>
+                <div class="columns is-centered">
+                    <div class="column is-half">
                     </div>
                 </div>
             </div>

@@ -1,8 +1,8 @@
 use std::{cmp::Ordering, sync::Arc, time::Duration};
 
 use api::{
-    GameEndReason, GameInnerState, MatchAction, MatchEndInfo, MatchError, MatchEvent, MatchId,
-    MatchInnerState, MatchWinner, UserId, UserPlay, WsResponse,
+    GameEndReason, GameInnerState, MatchAction, MatchConfig, MatchEndInfo, MatchError, MatchEvent,
+    MatchId, MatchInnerState, MatchSettings, MatchWinner, UserId, UserPlay, WsResponse,
 };
 use chrono::{DateTime, Utc};
 use hexomino_core::{Action, Player, State as GameState};
@@ -50,7 +50,7 @@ pub struct MatchActor {
 #[derive(Debug)]
 pub struct MatchInfo {
     id: MatchId,
-    num_games: u32,
+    settings: MatchSettings,
     user_data: [api::User; 2],
 }
 
@@ -86,12 +86,11 @@ enum MatchPhase {
 
 const MATCH_START_WAIT_TIME: Duration = Duration::from_secs(1);
 const LEEWAY: Duration = Duration::from_secs(2);
-const GAME_PLAY_TIME_LIMIT: Duration = Duration::from_secs(20);
 const BETWEEN_GAME_DELAY: Duration = Duration::from_secs(5);
 
 impl MatchActor {
-    pub fn new(users: [User; 2]) -> Self {
-        let info = MatchInfo::new(&users);
+    pub fn new(users: [User; 2], config: MatchConfig) -> Self {
+        let info = MatchInfo::new(&users, config);
         let history = MatchHistory::new(info.id, info.user_data.clone().map(|u| u.id));
         Self {
             info: Arc::new(info),
@@ -192,7 +191,7 @@ impl MatchActor {
         let state = &mut self.state;
         let score = &mut state.player_states[user_idx].score;
         *score += 1;
-        let match_is_end = *score > self.info.num_games / 2;
+        let match_is_end = *score > self.info.settings.number_of_games / 2;
         state.phase = if match_is_end {
             MatchPhase::MatchEnded
         } else {
@@ -316,7 +315,10 @@ impl Handler<UserAction> for MatchActor {
                 if let Some(player) = self.state.game.winner() {
                     self.player_win_game(player, GameEndReason::NoValidMove, ctx);
                 } else {
-                    let nonce = self.state.deadline.set_public(GAME_PLAY_TIME_LIMIT);
+                    let nonce = self
+                        .state
+                        .deadline
+                        .set_public(self.info.settings.play_time_limit);
                     ctx.notify_later(
                         PlayerTimeout {
                             player: self
@@ -326,7 +328,7 @@ impl Handler<UserAction> for MatchActor {
                                 .expect("game not ended but no current player"),
                             nonce,
                         },
-                        GAME_PLAY_TIME_LIMIT + LEEWAY,
+                        self.info.settings.play_time_limit + LEEWAY,
                     );
                     self.broadcast_deadline();
                     //panic!("how come??");
@@ -365,13 +367,16 @@ impl Handler<StartNewGame> for MatchActor {
 
         self.broadcast_new_game();
 
-        let nonce = self.state.deadline.set_public(GAME_PLAY_TIME_LIMIT);
+        let nonce = self
+            .state
+            .deadline
+            .set_public(self.info.settings.play_time_limit);
         ctx.notify_later(
             PlayerTimeout {
                 player: Player::First,
                 nonce,
             },
-            GAME_PLAY_TIME_LIMIT + LEEWAY,
+            self.info.settings.play_time_limit + LEEWAY,
         );
         self.broadcast_deadline();
     }
@@ -383,7 +388,10 @@ impl Handler<EndMatch> for MatchActor {
     type Output = ();
 
     fn handle(&mut self, _msg: EndMatch, _ctx: &Context<Self>) -> Self::Output {
-        let history = self.history.take().expect("history is empty before match ends");
+        let history = self
+            .history
+            .take()
+            .expect("history is empty before match ends");
         let end_time = Utc::now();
         spawn(async move {
             if let Err(err) = history.save(end_time).await {
@@ -437,11 +445,24 @@ impl Handler<PlayerTimeout> for MatchActor {
     }
 }
 
+pub fn to_match_settings(config: MatchConfig) -> MatchSettings {
+    let (number_of_games, play_time_limit) = match config {
+        MatchConfig::Normal => (1, Duration::from_secs(40)),
+        MatchConfig::KnockoutStage => (3, Duration::from_secs(30)),
+        MatchConfig::ChampionshipStage => (2, Duration::from_secs(30)),
+    };
+    MatchSettings {
+        config,
+        number_of_games,
+        play_time_limit,
+    }
+}
+
 impl MatchInfo {
-    fn new(users: &[User; 2]) -> Self {
+    fn new(users: &[User; 2], config: MatchConfig) -> Self {
         Self {
             id: MatchId(Uuid::new_v4()),
-            num_games: 1,
+            settings: to_match_settings(config),
             user_data: users.each_ref().map(|u| u.to_api()),
         }
     }
@@ -449,7 +470,7 @@ impl MatchInfo {
     fn to_api(&self) -> api::MatchInfo {
         api::MatchInfo {
             id: self.id,
-            num_games: self.num_games,
+            num_games: self.settings.number_of_games,
             user_data: self.user_data.clone(),
         }
     }

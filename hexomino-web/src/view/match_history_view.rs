@@ -1,4 +1,4 @@
-use api::{ListUserMatchHistoriesApi, MatchHistoryNoGames, MatchConfig};
+use api::{ListUserMatchHistoriesApi, MatchConfig, MatchHistoryNoGames};
 use wasm_bindgen_futures::spawn_local;
 use yew::{
     function_component, html, use_context, use_effect, use_effect_with_deps, use_state, Html,
@@ -20,9 +20,8 @@ pub fn match_history_view(_props: &()) -> Html {
             move |_| {
                 spawn_local(async move {
                     let Ok(result) = connection
-                    .get_api::<ListUserMatchHistoriesApi>("/api/match_history/user_list")
-                    .await.log_err() else { return; };
-                    log::debug!("match histories = {:?}", result);
+                        .get_api::<ListUserMatchHistoriesApi>("/api/match_history/user_list")
+                        .await.log_err() else { return; };
                     match_histories.set(result);
                 });
 

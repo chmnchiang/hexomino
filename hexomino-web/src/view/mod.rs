@@ -20,7 +20,7 @@ use self::{
     match_history_view::MatchHistoryView,
     room::RoomView,
     rooms::RoomsView,
-    ws_reconnect::WsReconnectModal,
+    ws_reconnect::WsReconnectModal, error_message::ErrorMessageView,
 };
 
 mod common;
@@ -32,6 +32,7 @@ mod rooms;
 mod shared_link;
 mod util;
 mod ws_reconnect;
+mod error_message;
 
 #[function_component(App)]
 pub fn app() -> Html {
@@ -160,6 +161,7 @@ impl Component for MainView {
                 if self.show_reconnect {
                     <WsReconnectModal logout_cb={modal_logout_cb} reconnect_cb={modal_reconnect_cb}/>
                 }
+                <ErrorMessageView/>
             </main>
         }
     }

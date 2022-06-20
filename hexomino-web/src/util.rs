@@ -13,6 +13,8 @@ use log::error;
 use wasm_bindgen_futures::spawn_local;
 use yew::Callback;
 
+use crate::context::MainContext;
+
 pub type Shared<T> = Rc<RefCell<T>>;
 
 pub struct Mutex<T> {
@@ -132,6 +134,9 @@ pub trait ResultExt<T, E> {
     fn log_err(self) -> Self
     where
         E: Display;
+    fn show_err(self, context: &MainContext) -> Self
+    where
+        E: Display;
     fn map_cb(self, callback: Callback<T>) -> Result<(), E>;
     fn map_err_cb(self, callback: Callback<E>) -> Result<T, ()>;
     fn ignore_err(self) -> Result<T, ()>;
@@ -147,6 +152,16 @@ impl<T, E> ResultExt<T, E> for Result<T, E> {
     {
         if let Err(err) = &self {
             error!("{}", err);
+        }
+        self
+    }
+    fn show_err(self, context: &MainContext) -> Self
+    where
+        E: Display,
+    {
+        if let Err(err) = &self {
+            error!("{}", err);
+            context.main().emit_error(format!("{}", err));
         }
         self
     }

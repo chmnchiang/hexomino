@@ -1,8 +1,8 @@
-use std::{rc::Rc, time::Duration, str::FromStr};
+use std::{rc::Rc, str::FromStr, time::Duration};
 
 use api::{
-    JoinedRoom, LeaveRoomApi, MatchConfig, RoomActionApi, RoomActionRequest, RoomId, RoomUser,
-    WsResponse, WsResult, MatchSettings,
+    JoinedRoom, LeaveRoomApi, MatchConfig, MatchSettings, RoomActionApi, RoomActionRequest, RoomId,
+    RoomUser, WsResponse, WsResult,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
@@ -11,7 +11,8 @@ use yew::{html, Component, Context, Html};
 
 use crate::{
     context::{connection::ws::WsListenerToken, ScopeExt},
-    util::ResultExt, view::common::match_token_html,
+    util::ResultExt,
+    view::common::match_token_html,
 };
 
 pub struct RoomView {
@@ -28,7 +29,8 @@ impl Component for RoomView {
     type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
-        let connection = ctx.link().connection();
+        let context = ctx.link().main_context();
+        let connection = context.connection();
         let callback = ctx.link().callback(RoomMsg::UpdateRoom);
         let ws_listener_token =
             connection.register_ws_callback(ctx.link().batch_callback(|resp: Rc<WsResult>| {
@@ -39,10 +41,13 @@ impl Component for RoomView {
             }));
 
         spawn_local(async move {
-            if let Ok(result) = connection.post_api::<api::GetRoomApi>("/api/room", ()).await
-                && let Ok(result) = result.log_err() {
-                    callback.emit(result);
-                }
+            let Ok(result) = connection.post_api::<api::GetRoomApi>("/api/room", ())
+                .await
+                .show_err(&context)
+                else { return; };
+            if let Ok(result) = result.show_err(&context) {
+                callback.emit(result);
+            }
         });
 
         Self {

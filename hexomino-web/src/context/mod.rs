@@ -55,17 +55,22 @@ impl PartialEq for MainContextInner {
 }
 
 pub trait ScopeExt {
+    fn main_context(&self) -> MainContext;
     fn connection(&self) -> Rc<Connection>;
     fn main(&self) -> Rc<MainLink>;
 }
 
 impl<T: Component> ScopeExt for Scope<T> {
+    fn main_context(&self) -> MainContext {
+        let (context, _) = self
+            .context::<MainContext>(Callback::noop())
+            .expect("context is none");
+        context
+    }
     fn connection(&self) -> Rc<Connection> {
-        let (context, _) = self.context::<MainContext>(Callback::noop()).unwrap();
-        context.connection()
+        self.main_context().connection()
     }
     fn main(&self) -> Rc<MainLink> {
-        let (context, _) = self.context::<MainContext>(Callback::noop()).unwrap();
-        context.main()
+        self.main_context().main()
     }
 }

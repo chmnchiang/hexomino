@@ -83,16 +83,17 @@ impl Component for RoomsView {
                     .cast::<HtmlInputElement>()
                     .expect("can't cast the ref to input element");
                 let match_token = input.value();
-                let connection = ctx.link().connection();
+                let context = ctx.link().main_context();
+                let connection = context.connection();
                 spawn_local(async move {
-                    let result = connection
+                    let Ok(result) = connection
                         .post_api::<CreateOrJoinMatchRoomApi>(
                             "/api/room/join_match",
                             MatchToken(match_token),
                         )
                         .await
-                        .log_err();
-                    let result = result.log_err();
+                        .show_err(&context) else { return; };
+                    let _ = result.show_err(&context);
                 });
                 false
             }
@@ -125,20 +126,20 @@ impl Component for RoomsView {
         });
 
         let room_to_html = {
-            let link = link.clone();
+            let context = link.main_context();
             move |room: &api::Room| -> Html {
-                let link = link.clone();
+                let context = context.clone();
                 let room_id = room.id;
                 let users = room.users.iter().cloned().map(|user| user.name).join(", ");
                 let join_callback = move |_| {
-                    let link = link.clone();
+                    let context = context.clone();
                     spawn_local(async move {
-                        let resp = link
+                        let resp = context
                             .connection()
                             .post_api::<JoinRoomApi>("/api/room/join", room_id)
                             .await;
-                        let Ok(resp) = resp.log_err() else { return };
-                        let Ok(()) = resp.log_err() else { return };
+                        let Ok(resp) = resp.show_err(&context) else { return };
+                        let _ = resp.show_err(&context);
                     })
                 };
                 let id_str = format!("{}", room_id.0);

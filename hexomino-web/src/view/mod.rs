@@ -262,6 +262,7 @@ impl MainView {
             .me()
             .map(|user| user.name.clone())
             .unwrap_or_else(|| "<Unknown>".to_string());
+        let logout_onclick = ctx.link().callback(|_| MainMsg::Logout);
 
         html! {
             <nav class="navbar is-light" role="navigation" aria-label="main navigation">
@@ -286,7 +287,14 @@ impl MainView {
                     </div>
                     <div class="navbar-end">
                         <div class="navbar-item">{ format!("Welcome, {}", my_name) }</div>
-                        <a class="navbar-item" href="javascript:void(0)">{ "Logout" }</a>
+                        <a class="navbar-item" href="javascript:void(0)" onclick={logout_onclick}>
+                            <span class="icon"><i class="fa-solid fa-arrow-right-from-bracket"></i></span>
+                            <span>{ "Logout" }</span>
+                        </a>
+                        <a class="navbar-item" href="https://github.com/chmnchiang/hexomino/issues" target="_blank">
+                            <span class="icon"><i class="fa-solid fa-bug"></i></span>
+                            <span>{ "Report bug" }</span>
+                        </a>
                     </div>
                 </div>
             </nav>

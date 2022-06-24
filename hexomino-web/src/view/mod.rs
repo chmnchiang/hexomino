@@ -49,6 +49,7 @@ pub struct MainProps;
 pub struct MainView {
     context: MainContext,
     show_reconnect: bool,
+    show_mobile_navbar: bool,
     route: Route,
     _ws_listener_token: WsListenerToken,
 }
@@ -78,6 +79,7 @@ pub enum MainMsg {
     OnRouteChange(Route),
     Logout,
     ReconnectWs,
+    ToggleMobileNav,
 }
 
 pub enum Page {
@@ -102,6 +104,7 @@ impl Component for MainView {
             context,
             route: Route::Login,
             show_reconnect: status == ConnectionStatus::WsNotConnected,
+            show_mobile_navbar: false,
             _ws_listener_token: connection
                 .register_ws_callback(ctx.link().callback(MainMsg::OnWsRecv)),
         }
@@ -147,6 +150,10 @@ impl Component for MainView {
             }
             ReconnectWs => {
                 self.connect_ws(ctx);
+                true
+            }
+            ToggleMobileNav => {
+                self.show_mobile_navbar = !self.show_mobile_navbar;
                 true
             }
         }
@@ -263,19 +270,26 @@ impl MainView {
             .map(|user| user.name.clone())
             .unwrap_or_else(|| "<Unknown>".to_string());
         let logout_onclick = ctx.link().callback(|_| MainMsg::Logout);
+        let mobile_burger_onclick = ctx.link().callback(|_| MainMsg::ToggleMobileNav);
 
         html! {
             <nav class="navbar is-light" role="navigation" aria-label="main navigation">
                 <div class="navbar-brand">
-                    <div class="navbar-item">
+                    <div class={classes!["navbar-item", self.show_mobile_navbar.then_some("is-active")]}>
                         <div style="width: 30px; height: 30px;
                             transform: rotate(180deg) scaleX(-1) scale(1.5)">
                             <HexoSvg hexo={Hexo::new(6)}/>
                         </div>
-                    <b> { "Hexomino" } </b>
+                        <b> { "Hexomino" } </b>
                     </div>
+                    <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false"
+                        onclick={mobile_burger_onclick}>
+                        <span aria-hidden="true"></span>
+                        <span aria-hidden="true"></span>
+                        <span aria-hidden="true"></span>
+                    </a>
                 </div>
-                <div class="navbar-menu">
+                <div class={classes!["navbar-menu", self.show_mobile_navbar.then_some("is-active")]}>
                     <div class="navbar-start">
                         {
                             [(Route::Rooms, "Public Games"),

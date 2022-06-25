@@ -5,7 +5,7 @@ use api::{
     MatchId, MatchInnerState, MatchSettings, MatchToken, MatchWinner, UserId, UserPlay, WsResponse,
 };
 use chrono::{DateTime, Utc};
-use hexomino_core::{Action, Player, State as GameState};
+use hexomino_core::{Action, GamePhase, Player, State as GameState};
 use tokio::spawn;
 use uuid::Uuid;
 
@@ -86,6 +86,7 @@ enum MatchPhase {
 }
 
 const MATCH_START_WAIT_TIME: Duration = Duration::from_secs(1);
+const PICK_PHASE_TIME_LIMIT: Duration = Duration::from_secs(15);
 const LEEWAY: Duration = Duration::from_secs(2);
 const BETWEEN_GAME_DELAY: Duration = Duration::from_secs(10);
 
@@ -229,6 +230,40 @@ impl MatchActor {
         self.state.deadline.set_public(BETWEEN_GAME_DELAY);
         self.broadcast_deadline();
     }
+
+    fn user_play(&mut self, player: Player, action: Action, ctx: &Context<Self>) -> Result<()> {
+        self.state.user_play(player, action)?;
+        self.state.deadline.unset();
+        self.broadcast_last_action();
+
+        if let Some(player) = self.state.game.winner() {
+            self.player_win_game(player, GameEndReason::NoValidMove, ctx);
+        } else {
+            self.setup_next_deadline(ctx);
+        }
+        Ok(())
+    }
+
+    fn setup_next_deadline(&mut self, ctx: &Context<Self>) {
+        let time_limit = if self.state.game.phase() == GamePhase::Pick {
+            PICK_PHASE_TIME_LIMIT
+        } else {
+            self.info.settings.play_time_limit
+        };
+        let nonce = self.state.deadline.set_public(time_limit);
+        ctx.notify_later(
+            PlayerTimeout {
+                player: self
+                    .state
+                    .game
+                    .current_player()
+                    .expect("game not ended but no current player"),
+                nonce,
+            },
+           time_limit + LEEWAY,
+        );
+        self.broadcast_deadline();
+    }
 }
 
 impl Actor for MatchActor {
@@ -313,38 +348,8 @@ impl Handler<UserAction> for MatchActor {
             .user_player(msg.user.id())
             .ok_or(MatchError::NotInMatch)?;
         match msg.action {
-            MatchAction::Play(action) => {
-                self.state.user_play(player, action)?;
-                self.state.deadline.unset();
-                self.broadcast_last_action();
-
-                // TODO: Test code. Delete me!!
-                //self.state.game.set_winner(Player::First);
-
-                if let Some(player) = self.state.game.winner() {
-                    self.player_win_game(player, GameEndReason::NoValidMove, ctx);
-                } else {
-                    let nonce = self
-                        .state
-                        .deadline
-                        .set_public(self.info.settings.play_time_limit);
-                    ctx.notify_later(
-                        PlayerTimeout {
-                            player: self
-                                .state
-                                .game
-                                .current_player()
-                                .expect("game not ended but no current player"),
-                            nonce,
-                        },
-                        self.info.settings.play_time_limit + LEEWAY,
-                    );
-                    self.broadcast_deadline();
-                    //panic!("how come??");
-                }
-            }
+            MatchAction::Play(action) => self.user_play(player, action, ctx),
         }
-        Ok(())
     }
 }
 
@@ -371,23 +376,8 @@ impl Handler<StartNewGame> for MatchActor {
         state.prev_actions = vec![];
         state.prev_end_state = None;
 
-        // TODO: Test code. Delete me!
-        //state.fast_forward_to_place();
-
         self.broadcast_new_game();
-
-        let nonce = self
-            .state
-            .deadline
-            .set_public(self.info.settings.play_time_limit);
-        ctx.notify_later(
-            PlayerTimeout {
-                player: Player::First,
-                nonce,
-            },
-            self.info.settings.play_time_limit + LEEWAY,
-        );
-        self.broadcast_deadline();
+        self.setup_next_deadline(ctx)
     }
 }
 
@@ -450,7 +440,25 @@ impl Handler<PlayerTimeout> for MatchActor {
         if !self.state.deadline.expiration_is_valid(msg.nonce) {
             return;
         }
-        self.player_win_game(msg.player.other(), GameEndReason::TimeLimitExceed, ctx);
+        let game = &self.state.game;
+        if game.current_player() != Some(msg.player) {
+            return;
+        }
+        match game.phase() {
+            GamePhase::Pick => {
+                let hexo = game
+                    .inventory()
+                    .remaining_hexos()
+                    .iter()
+                    .next()
+                    .expect("there is no remaining hexos in pick phase");
+                let _ = self.user_play(msg.player, Action::Pick(hexo), ctx);
+            }
+            GamePhase::Place => {
+                self.player_win_game(msg.player.other(), GameEndReason::TimeLimitExceed, ctx);
+            }
+            _ => (),
+        }
     }
 }
 

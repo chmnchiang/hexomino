@@ -115,7 +115,6 @@ impl State {
     }
 
     pub fn inventory(&self) -> &Inventory {
-        assert_ne!(self.phase, GamePhase::End);
         &self.inventory
     }
 

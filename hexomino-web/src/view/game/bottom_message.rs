@@ -18,7 +18,7 @@ pub fn bottom_message(props: &BottomMessageProps) -> Html {
         html! {
             <>
                 <div style="position: fixed; bottom: 20px; left: 0px; width: 100%;
-                    padding-left: 20px; padding-right: 20px;">
+                    padding-left: 20px; padding-right: 20px; z-index: 10;">
                     <article class="message is-info">
                         <div class="message-body">
                             <div style="display: flex; width: 100%">
@@ -26,7 +26,7 @@ pub fn bottom_message(props: &BottomMessageProps) -> Html {
                                 <div style="display: flex; width: 40px; align-items: center;">
                                 <button class="button is-info" onclick={collapse_onclick.clone()}>
                                     <span class="icon is-small">
-                                        <i class="fa-solid fa-angle-left"></i>
+                                        <i class="fa-solid fa-angle-right"></i>
                                     </span>
                                 </button>
                                 </div>
@@ -46,7 +46,7 @@ pub fn bottom_message(props: &BottomMessageProps) -> Html {
     } else {
         html! {
             <>
-                <div style="position: fixed; bottom: 20px; left: 20px; display: inline-block;">
+                <div style="position: fixed; bottom: 20px; right: 20px; display: inline-block;">
                     <button class="button is-info" onclick={collapse_onclick}>
                         <span class="icon">
                             <i class="fa-solid fa-circle-question"></i>

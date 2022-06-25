@@ -217,7 +217,7 @@ impl Component for BoardCanvas {
         ctx.props().shared_link.install(ctx.link().clone());
         html! {
             <div>
-                <canvas ref={self.canvas.clone()} style="width: 100%; height: 60vh" {onmousemove} {onclick} {onmouseleave}/>
+                <canvas ref={self.canvas.clone()} style="width: 100%; height: 55vh" {onmousemove} {onclick} {onmouseleave}/>
             </div>
         }
     }

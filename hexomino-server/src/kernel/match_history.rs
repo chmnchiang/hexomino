@@ -195,8 +195,7 @@ pub async fn list_all_match_histories() -> ApiResult<Vec<MatchHistoryNoGames>, N
         SELECT mh.id AS id, u0.name AS user0, u1.name AS user1,
         mh.scores AS scores, TRUE AS user_is_first, mh.end_time AS end_time,
         mh.config AS config, mh.match_token AS match_token
-        FROM UserHistories
-        JOIN MatchHistories mh ON mh.id = UserHistories.match_id
+        FROM MatchHistories mh
         JOIN Users u0 ON mh.users[1] = u0.id
         JOIN Users u1 ON mh.users[2] = u1.id
         ORDER BY mh.end_time DESC;

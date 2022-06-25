@@ -31,11 +31,13 @@ impl Component for AiGameView {
     type Properties = ();
 
     fn create(_ctx: &Context<Self>) -> Self {
-        Self {
+        let me = Self {
             game: Rc::new(RefCell::new(GameState::new(Player::First))),
             my_score: 0,
             ai_score: 0,
-        }
+        };
+        me.game.borrow_mut().set_end_state(GameEndState { winner: Player::First, reason: api::GameEndReason::NoValidMove });
+        me
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: AiGameMsg) -> bool {

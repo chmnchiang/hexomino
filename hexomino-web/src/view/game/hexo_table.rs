@@ -21,22 +21,12 @@ pub struct HexoTableProps {
 pub fn hexo_table(props: &HexoTableProps) -> Html {
     const CHUNK_SIZE: usize = 9;
 
-    fn hexo_chunk_html<'a>(
-        chunk: impl Iterator<Item = &'a StyledHexo>,
-        onclick: Callback<Hexo>,
-    ) -> Html {
-        let chunk = chunk.map(Some).chain(repeat(None)).take(CHUNK_SIZE);
-
-        chunk.map(|hexo| html!{
-            <div class="square-block hexo-block"> {
-                match hexo {
-                    Some((hexo, style)) => html!{
-                        <HexoBlock hexo={*hexo} style={style.clone()} onclick={onclick.clone()}/>
-                    },
-                    None => html!{},
-                }
-            } </div>
-        }).collect::<Html>()
+    fn hexo_to_html(hexo: Hexo, style: Option<String>, onclick: Callback<Hexo>) -> Html {
+        html! {
+            <div class="square-block hexo-block">
+                <HexoBlock {hexo} {style} onclick={onclick.clone()}/>
+            </div>
+        }
     }
 
     html! {
@@ -65,9 +55,7 @@ pub fn hexo_table(props: &HexoTableProps) -> Html {
                     <ul class="hexo-grid" style="width: 100%;"> {
                         props.styled_hexos
                             .iter()
-                            .chunks(CHUNK_SIZE)
-                            .into_iter()
-                            .map(|chunk| hexo_chunk_html(chunk, props.on_hexo_click.clone()))
+                            .map(|(hexo, style)| hexo_to_html(*hexo, style.clone(), props.on_hexo_click.clone()))
                             .collect::<Html>()
                     } </ul>
                 </div>

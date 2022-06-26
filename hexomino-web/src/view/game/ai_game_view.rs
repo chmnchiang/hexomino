@@ -86,7 +86,7 @@ impl Component for AiGameView {
                         GamePhase::End => html!{
                             <>
                                 <EndView state={self.game.clone()} names={player_names}/>
-                                <div class="columns is-centered">
+                                <div class="columns is-centered" style="margin-top: 1rem">
                                     <div class="column is-one-quarter" style="text-align: center">
                                         <button class="button is-success" onclick={play_again_onclick}>
                                             <span class="icon">

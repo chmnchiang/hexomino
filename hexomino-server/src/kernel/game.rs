@@ -414,7 +414,8 @@ impl Handler<StartNewGame> for MatchActor {
         state.phase = MatchPhase::GamePlaying;
         state.game_idx += 1;
         state.game = GameState::new();
-        state.first_user_player = if state.game_idx % 2 == 0 {
+        let random = self.info.id.0.as_u128() % 2;
+        state.first_user_player = if (random as i32 + state.game_idx) % 2 == 0 {
             Player::First
         } else {
             Player::Second

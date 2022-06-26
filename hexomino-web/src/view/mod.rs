@@ -21,7 +21,7 @@ use self::{
     match_history_view::MatchHistoryView,
     room::RoomView,
     rooms::RoomsView,
-    ws_reconnect::WsReconnectModal,
+    ws_reconnect::WsReconnectModal, rule_view::RuleView,
 };
 
 mod common;
@@ -29,6 +29,7 @@ mod error_message;
 mod game;
 mod login_view;
 mod match_history_view;
+mod rule_view;
 mod room;
 mod rooms;
 mod shared_link;
@@ -70,6 +71,7 @@ pub enum Route {
     Game,
     AiGame,
     MatchHistory,
+    Rule,
 }
 
 pub enum MainMsg {
@@ -192,10 +194,11 @@ impl MainView {
             Route::Game => self.game_view(),
             Route::AiGame => self.ai_game_view(),
             Route::MatchHistory => self.match_history_view(),
+            Route::Rule => self.rule_view(),
         };
         let has_navbar = matches!(
             self.route,
-            Route::Rooms | Route::AiGame | Route::MatchHistory
+            Route::Rooms | Route::AiGame | Route::MatchHistory | Route::Rule,
         );
 
         html! {
@@ -253,6 +256,12 @@ impl MainView {
         }
     }
 
+    fn rule_view(&self) -> Html {
+        html! {
+            <RuleView/>
+        }
+    }
+
     fn navbar_view(&self, route: Route, ctx: &Context<Self>) -> Html {
         let main = ctx.link().main();
         let navbar_item_html = move |target: Route, text: &str| -> Html {
@@ -293,9 +302,12 @@ impl MainView {
                 <div class={classes!["navbar-menu", self.show_mobile_navbar.then_some("is-active")]}>
                     <div class="navbar-start">
                         {
-                            [(Route::Rooms, "Public Games"),
-                             (Route::AiGame, "AI Game"),
-                             (Route::MatchHistory, "Match History")].iter()
+                            [
+                                (Route::Rooms, "Public Games"),
+                                (Route::AiGame, "AI Game"),
+                                (Route::MatchHistory, "Match History"),
+                                (Route::Rule, "Game Rules"),
+                            ].iter()
                                  .map(|(target, text)| navbar_item_html(*target, text))
                                  .collect::<Html>()
                         }

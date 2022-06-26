@@ -21,6 +21,14 @@ pub fn player_color_style(is_me: bool, opacity: f64) -> String {
     }
 }
 
+pub fn player_hint_color_style(is_me: bool) -> String {
+    if is_me {
+        format!("fill: rgb(48, 240, 32)")
+    } else {
+        format!("fill: rgb(240, 48, 32)")
+    }
+}
+
 #[function_component(TurnIndicator)]
 pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
     const WIDTH: i32 = 3000;
@@ -29,6 +37,7 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
     const D_LEN: i32 = 50;
     const SPACE: i32 = 20;
     const MARGIN: i32 = 10;
+    const CURRENT_ANIMATE_WIDTH: i32 = WIDTH / 4;
     const FONT_SIZE: i32 = HEIGHT * 4 / 5;
     const FONT_PADDING: i32 = 20;
 
@@ -56,19 +65,41 @@ pub fn turn_indicator(props: &TurnIndicatorProps) -> Html {
         WIDTH - SCORE_LEN - MARGIN,
     );
     let (player1_opacity, player2_opacity) = match props.current_player {
-        Some(Player::First) => (1.0, 0.5),
-        Some(Player::Second) => (0.5, 1.0),
+        Some(Player::First) => (1.0, 0.4),
+        Some(Player::Second) => (0.4, 1.0),
         None => (0.5, 0.5),
     };
     let player1_style = player_color_style(props.me == Player::First, player1_opacity);
+    let player1_hint_style = player_hint_color_style(props.me == Player::First);
     let player2_style = player_color_style(props.me == Player::Second, player2_opacity);
+    let player2_hint_style = player_hint_color_style(props.me == Player::Second);
     html! {
         <div style="width: 100%;">
             <svg width="100%" style="min-height: 30px;" viewBox={viewbox}>
             <path d={shape_score_1} style={player1_style.clone()}/>
-            <path d={shape_player_1} style={player1_style}/>
+            <path d={shape_player_1.clone()} style={player1_style}/>
+            if let Some(Player::First) = props.current_player {
+                <mask id="p1-mask">
+                    <rect x="0" y="0" width={WIDTH.to_string()} height={HEIGHT.to_string()} fill="black"/>
+                    <path d={shape_player_1} fill="white"/>
+                </mask>
+                <rect width={CURRENT_ANIMATE_WIDTH.to_string()} height={HEIGHT.to_string()}
+                    style={player1_hint_style} mask="url(#p1-mask)">
+                    <animate attributeName="x" values={format!("{};{}", -WIDTH/4, -WIDTH/4 + 2*WIDTH)} dur="4s" repeatCount="indefinite"/>
+                </rect>
+            }
             <path d={shape_score_2} style={player2_style.clone()}/>
-            <path d={shape_player_2} style={player2_style}/>
+            <path d={shape_player_2.clone()} style={player2_style}/>
+            if let Some(Player::Second) = props.current_player {
+                <mask id="p2-mask">
+                    <rect x="0" y="0" width={WIDTH.to_string()} height={HEIGHT.to_string()} fill="black"/>
+                    <path d={shape_player_2} fill="white"/>
+                </mask>
+                <rect width={CURRENT_ANIMATE_WIDTH.to_string()} height={HEIGHT.to_string()}
+                    style={player2_hint_style} mask="url(#p2-mask)">
+                    <animate attributeName="x" values={format!("{};{}", WIDTH, -WIDTH)} dur="4s" repeatCount="indefinite"/>
+                </rect>
+            }
             <text x={(SCORE_LEN/2).to_string()} y={(HEIGHT/2).to_string()}
                 font-size="80" alignment-baseline="central" text-anchor="middle">{props.scores[0]}</text>
             <text x={(FONT_PADDING + SCORE_LEN + MARGIN).to_string()} y={(HEIGHT/2).to_string()}

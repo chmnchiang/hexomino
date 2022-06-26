@@ -9,7 +9,6 @@ use std::{
 };
 
 use futures::FutureExt as _;
-use log::error;
 use wasm_bindgen_futures::spawn_local;
 use yew::Callback;
 
@@ -121,7 +120,7 @@ pub trait OptionExt<T> {
 impl<T> OptionExt<T> for Option<T> {
     fn log_none(self, msg: &str) -> Self {
         if self.is_none() {
-            error!("{}", msg);
+            log::error!("{}", msg);
         }
         self
     }
@@ -151,7 +150,7 @@ impl<T, E> ResultExt<T, E> for Result<T, E> {
         E: Display,
     {
         if let Err(err) = &self {
-            error!("{}", err);
+            log::error!("{}", err);
         }
         self
     }
@@ -160,7 +159,7 @@ impl<T, E> ResultExt<T, E> for Result<T, E> {
         E: Display,
     {
         if let Err(err) = &self {
-            error!("{}", err);
+            log::error!("{}", err);
             context.main().emit_error(format!("{}", err));
         }
         self

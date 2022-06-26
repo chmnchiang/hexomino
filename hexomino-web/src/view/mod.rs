@@ -15,15 +15,17 @@ use crate::context::{
 
 use self::{
     common::hexo_svg::HexoSvg,
+    error_message::ErrorMessageView,
     game::{ai_game_view::AiGameView, GameView},
     login_view::LoginView,
     match_history_view::MatchHistoryView,
     room::RoomView,
     rooms::RoomsView,
-    ws_reconnect::WsReconnectModal, error_message::ErrorMessageView,
+    ws_reconnect::WsReconnectModal,
 };
 
 mod common;
+mod error_message;
 mod game;
 mod login_view;
 mod match_history_view;
@@ -32,7 +34,6 @@ mod rooms;
 mod shared_link;
 mod util;
 mod ws_reconnect;
-mod error_message;
 
 #[function_component(App)]
 pub fn app() -> Html {
@@ -114,7 +115,7 @@ impl Component for MainView {
         use MainMsg::*;
         match msg {
             OnLoginOk => {
-                log::debug!("Login completed.");
+                log::info!("User logged in.");
                 self.connect_ws(ctx);
                 false
             }
@@ -348,15 +349,21 @@ impl MainView {
 
     fn receive_ws_message(&self, ctx: &Context<Self>, msg: &WsResult) {
         use api::WsResponse::*;
-        if let UserStatusUpdate(status) = msg {
-            let next_route = match status {
-                UserStatus::Idle => Some(Route::Rooms),
-                UserStatus::InRoom => Some(Route::Room),
-                UserStatus::InGame => Some(Route::Game),
-            };
-            if let Some(next_route) = next_route {
-                ctx.link().main().go(next_route);
+        match msg {
+            UserStatusUpdate(status) => {
+                let next_route = match status {
+                    UserStatus::Idle => Some(Route::Rooms),
+                    UserStatus::InRoom => Some(Route::Room),
+                    UserStatus::InGame => Some(Route::Game),
+                };
+                if let Some(next_route) = next_route {
+                    ctx.link().main().go(next_route);
+                }
             }
+            NotifyError(error) => {
+                ctx.link().main().emit_error(format!("{}", error));
+            }
+            _ => (),
         }
     }
 }

@@ -174,6 +174,7 @@ impl GameState {
     }
     fn new_from_api(state: api::GameInnerState) -> Self {
         let mut game = GameState::new(state.you);
+        game.num_action = state.prev_actions.len();
         for action in state.prev_actions {
             let _ = game.core.current_player_play(action);
         }

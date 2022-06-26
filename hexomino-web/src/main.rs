@@ -11,8 +11,6 @@ mod game;
 mod util;
 mod view;
 
-use log::*;
-
 use view::App;
 use wasm_bindgen::prelude::*;
 
@@ -25,8 +23,8 @@ pub fn main() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
     wasm_logger::init(wasm_logger::Config::default());
-    info!("start main");
+    log::info!("start main");
     yew::start_app::<App>();
-    info!("registered yew component");
+    log::info!("registered yew component");
     Ok(())
 }

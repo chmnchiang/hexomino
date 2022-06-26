@@ -1,5 +1,4 @@
-use api::{RoomError, Never, MatchError};
-
+use api::{MatchError, Never, RoomError};
 
 use serde::Serialize;
 

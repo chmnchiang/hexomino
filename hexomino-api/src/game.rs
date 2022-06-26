@@ -89,6 +89,8 @@ derive_api_data! {
         NotInMatch,
         #[error("cannot perform game action: {0}")]
         GameActionError(String),
+        #[error("unknown error in game")]
+        Unknown,
     }
 }
 

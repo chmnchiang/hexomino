@@ -140,6 +140,7 @@ impl Component for GameView {
 
 impl GameView {
     fn on_sync_match(&mut self, mtch: api::MatchState) -> bool {
+        self.deadline = mtch.deadline;
         self.mtch = Some(MatchState::from_api(mtch));
         true
     }
@@ -247,6 +248,7 @@ impl GameView {
 }
 
 fn do_sync_match(ctx: &Context<GameView>) {
+    log::warn!("syncing the game state");
     let callback = ctx.link().callback(GameMsg::OnSyncMatch);
     let connection = ctx.link().connection();
     spawn_local(async move {

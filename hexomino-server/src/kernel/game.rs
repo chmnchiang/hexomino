@@ -2,7 +2,8 @@ use std::{cmp::Ordering, sync::Arc, time::Duration};
 
 use api::{
     GameEndReason, GameInnerState, MatchAction, MatchConfig, MatchEndInfo, MatchError, MatchEvent,
-    MatchId, MatchInnerState, MatchSettings, MatchToken, MatchWinner, UserId, UserPlay, WsResponse,
+    MatchId, MatchInnerState, MatchSettings, MatchToken, MatchWinner, UserId, UserPlay,
+    WsNotifiedError, WsResponse,
 };
 use chrono::{DateTime, Utc};
 use hexomino_core::{Action, GamePhase, Player, State as GameState};
@@ -29,10 +30,10 @@ pub struct MatchHandle {
 
 impl MatchHandle {
     pub async fn user_action(&self, user: User, action: MatchAction) -> Result<()> {
-        self.addr.send(UserAction { user, action }).await
+        self.addr.send(UserAction { user, action }).await?
     }
     pub async fn sync_match(&self, user: User) -> Result<api::MatchState> {
-        self.addr.send(SyncMatch { user }).await
+        self.addr.send(SyncMatch { user }).await?
     }
     pub fn id(&self) -> MatchId {
         self.info.id
@@ -132,7 +133,10 @@ impl MatchActor {
     }
 
     fn broadcast_game_end(&self) {
-        let end_state = self.state.prev_end_state.expect("game is not ended");
+        let Some(end_state) = self.state.prev_end_state else {
+            tracing::error!("prev_end_state is none");
+            return;
+        };
         for (idx, users) in self.users.iter().enumerate() {
             let info = api::GameEndInfo {
                 end_state: api::GameEndState {
@@ -159,6 +163,12 @@ impl MatchActor {
         let Some(deadline) = self.state.deadline.to_api() else { return; };
         for user in &self.users {
             user.do_send(WsResponse::MatchEvent(MatchEvent::UpdateDeadline(deadline)));
+        }
+    }
+
+    fn broadcast_error(&self, error: WsNotifiedError) {
+        for user in &self.users {
+            user.do_send(WsResponse::NotifyError(error.clone()));
         }
     }
 
@@ -196,6 +206,11 @@ impl MatchActor {
 
     fn player_win_game(&mut self, player: Player, reason: GameEndReason, ctx: &Context<Self>) {
         let user_idx = self.player_to_user_idx(player);
+        tracing::info!(
+            "User {} won the game in match {}. Reason: {reason:?}",
+            self.users[user_idx].username(),
+            self.info.id
+        );
         let state = &mut self.state;
         let score = &mut state.player_states[user_idx].score;
         *score += 1;
@@ -211,15 +226,20 @@ impl MatchActor {
             winner: player,
             reason,
         });
-        self.history
+        if let Some(history) = self
+            .history
             .as_mut()
-            .expect("history is none before the match ends")
-            .add_game(
+            .crash_match_if_none("history is none before the match ends", ctx)
+        {
+            history.add_game(
                 state.first_user_player,
                 state.prev_actions.clone(),
                 player,
                 reason,
             );
+        } else {
+            return;
+        }
         self.broadcast_game_end();
 
         if !match_is_end {
@@ -251,25 +271,37 @@ impl MatchActor {
             self.info.settings.play_time_limit
         };
         let nonce = self.state.deadline.set_public(time_limit);
-        ctx.notify_later(
-            PlayerTimeout {
-                player: self
-                    .state
-                    .game
-                    .current_player()
-                    .expect("game not ended but no current player"),
-                nonce,
-            },
-           time_limit + LEEWAY,
-        );
+        let Some(player) = self
+            .state
+            .game
+            .current_player()
+            .crash_match_if_none("game not ended but no current player", ctx)
+        else {
+            return;
+        };
+        ctx.notify_later(PlayerTimeout { player, nonce }, time_limit + LEEWAY);
         self.broadcast_deadline();
+    }
+
+    fn set_users_idle(&mut self) {
+        let user_states = User::lock_both_user_states(self.users.each_ref());
+        for mut state in user_states {
+            state.status = UserStatus::Idle;
+        }
+    }
+
+    fn set_users_idle_and_update(&mut self) {
+        self.set_users_idle();
+        for user in &self.users {
+            user.send_status_update();
+        }
     }
 }
 
 impl Actor for MatchActor {
     fn started(&mut self, ctx: &Context<Self>) {
         let nonce = self.state.deadline.set();
-        ctx.notify_later(CancelGame { nonce }, MATCH_START_WAIT_TIME);
+        ctx.notify_later(CancelMatch { nonce }, MATCH_START_WAIT_TIME);
     }
 }
 
@@ -280,6 +312,7 @@ pub struct SyncMatch {
 impl Handler<SyncMatch> for MatchActor {
     type Output = Result<api::MatchState>;
 
+    #[tracing::instrument(skip_all, fields(r#match = %self.info.id, action = "SyncMatch", user = ?msg.user.username()))]
     fn handle(&mut self, msg: SyncMatch, ctx: &Context<Self>) -> Self::Output {
         let user_idx = self.user_idx(msg.user.id()).ok_or(MatchError::NotInMatch)?;
         if !self.state.player_states[user_idx].is_ready {
@@ -290,24 +323,35 @@ impl Handler<SyncMatch> for MatchActor {
         let match_state = match self.state.phase {
             MatchPhase::GameNotStarted => MatchInnerState::NotStarted,
             MatchPhase::GamePlaying => {
+                let you = self
+                    .user_player(msg.user.id())
+                    .crash_match_if_none(
+                        "can't find user in match after asserted the condition",
+                        ctx,
+                    )
+                    .ok_or(MatchError::Unknown)?;
                 MatchInnerState::Playing(api::GameState::GamePlaying(GameInnerState {
-                    you: self
-                        .user_player(msg.user.id())
-                        .expect("already asserted user in game"),
+                    you,
                     prev_actions: self.state.prev_actions.clone(),
                 }))
             }
             MatchPhase::GameEnded => {
+                let you = self
+                    .user_player(msg.user.id())
+                    .crash_match_if_none(
+                        "can't find user in match after asserting the condition",
+                        ctx,
+                    )
+                    .ok_or(MatchError::Unknown)?;
                 let info = self
                     .state
                     .prev_end_state
-                    .expect("game ended but info is None");
+                    .crash_match_if_none("end state info is none", ctx)
+                    .ok_or(MatchError::Unknown)?;
 
                 MatchInnerState::Playing(api::GameState::GameEnded {
                     game_state: GameInnerState {
-                        you: self
-                            .user_player(msg.user.id())
-                            .expect("already asserted user in game"),
+                        you,
                         prev_actions: self.state.prev_actions.clone(),
                     },
                     end_state: api::GameEndState {
@@ -343,6 +387,7 @@ pub struct UserAction {
 impl Handler<UserAction> for MatchActor {
     type Output = Result<()>;
 
+    #[tracing::instrument(skip_all, fields(r#match = %self.info.id, action = "UserAction", user = ?msg.user.username()))]
     fn handle(&mut self, msg: UserAction, ctx: &Context<Self>) -> Self::Output {
         let player = self
             .user_player(msg.user.id())
@@ -358,6 +403,7 @@ struct StartNewGame;
 impl Handler<StartNewGame> for MatchActor {
     type Output = ();
 
+    #[tracing::instrument(skip_all, fields(r#match = %self.info.id, message = "StartNewGame"))]
     fn handle(&mut self, _msg: StartNewGame, ctx: &Context<Self>) -> Self::Output {
         self.state.deadline.unset();
 
@@ -386,45 +432,59 @@ struct EndMatch;
 impl Handler<EndMatch> for MatchActor {
     type Output = ();
 
-    fn handle(&mut self, _msg: EndMatch, _ctx: &Context<Self>) -> Self::Output {
-        let history = self
+    #[tracing::instrument(skip_all, fields(r#match = %self.info.id, message = "EndMatch"))]
+    fn handle(&mut self, _msg: EndMatch, ctx: &Context<Self>) -> Self::Output {
+        let Some(history) = self
             .history
             .take()
-            .expect("history is empty before match ends");
+            .crash_match_if_none("history is empty before match ends", ctx)
+        else { return; };
         let end_time = Utc::now();
         spawn(async move {
             if let Err(err) = history.save(end_time).await {
                 tracing::error!("failed to save history: {}", err);
             }
         });
+        tracing::info!(
+            "Match {} ended: {} ({}) : {} ({})",
+            self.info.id,
+            self.users[0].username(),
+            self.state.player_states[0].score,
+            self.users[1].username(),
+            self.state.player_states[1].score
+        );
         self.broadcast_match_end();
-        let user_states = User::lock_both_user_states(self.users.each_ref());
-        for mut state in user_states {
-            state.status = UserStatus::Idle;
-        }
+        self.set_users_idle();
     }
 }
 
-struct CancelGame {
+struct CancelMatch {
     nonce: DeadlineNonce,
 }
 
-impl Handler<CancelGame> for MatchActor {
+impl Handler<CancelMatch> for MatchActor {
     type Output = ();
 
-    fn handle(&mut self, msg: CancelGame, _ctx: &Context<Self>) -> Self::Output {
+    #[tracing::instrument(skip_all, fields(r#match = %self.info.id, message = "CancelGame"))]
+    fn handle(&mut self, msg: CancelMatch, _ctx: &Context<Self>) -> Self::Output {
         if !self.state.deadline.expiration_is_valid(msg.nonce) {
             return;
         }
-        {
-            let user_states = User::lock_both_user_states(self.users.each_ref());
-            for mut state in user_states {
-                state.status = UserStatus::Idle;
-            }
-        }
-        for user in &self.users {
-            user.send_status_update();
-        }
+        self.broadcast_error(WsNotifiedError::GameCanceled);
+        self.set_users_idle_and_update();
+    }
+}
+
+struct CrashMatch;
+
+impl Handler<CrashMatch> for MatchActor {
+    type Output = ();
+
+    #[tracing::instrument(skip_all, fields(r#match = %self.info.id, message = "CrashGame"))]
+    fn handle(&mut self, _msg: CrashMatch, ctx: &Context<Self>) -> Self::Output {
+        self.broadcast_error(WsNotifiedError::GameCrashed);
+        self.set_users_idle_and_update();
+        ctx.stop();
     }
 }
 
@@ -446,12 +506,17 @@ impl Handler<PlayerTimeout> for MatchActor {
         }
         match game.phase() {
             GamePhase::Pick => {
-                let hexo = game
+                let hexo = if let Some(hexo) = game
                     .inventory()
                     .remaining_hexos()
                     .iter()
                     .next()
-                    .expect("there is no remaining hexos in pick phase");
+                    .crash_match_if_none("there is no remaining hexos in pick phase", ctx)
+                {
+                    hexo
+                } else {
+                    return;
+                };
                 let _ = self.user_play(msg.player, Action::Pick(hexo), ctx);
             }
             GamePhase::Place => {
@@ -651,5 +716,39 @@ impl IntoPerspective for api::MatchEndInfo {
     fn flip(mut self) -> Self {
         self.scores.swap(0, 1);
         self
+    }
+}
+
+trait OptionExt {
+    fn crash_match_if_none(self, msg: &str, ctx: &Context<MatchActor>) -> Self;
+}
+
+impl<T> OptionExt for Option<T> {
+    fn crash_match_if_none(self, msg: &str, ctx: &Context<MatchActor>) -> Self {
+        match self {
+            Some(_) => self,
+            None => {
+                tracing::error!("{}", msg);
+                ctx.notify(CrashMatch);
+                self
+            }
+        }
+    }
+}
+
+trait ResultExt {
+    fn crash_match_if_err(self, ctx: &Context<MatchActor>) -> Self;
+}
+
+impl<T> ResultExt for Result<T> {
+    fn crash_match_if_err(self, ctx: &Context<MatchActor>) -> Self {
+        match self {
+            Ok(_) => self,
+            Err(ref err) => {
+                tracing::error!("{}", err);
+                ctx.notify(CrashMatch);
+                self
+            }
+        }
     }
 }

@@ -1,9 +1,13 @@
 use std::{
-    future::Future,
-    sync::{Arc, Weak},
+    cell::Cell,
+    future::{ready, Future},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Weak,
+    },
 };
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use api::{Api, RoomId, StartWsApi, StartWsError, StartWsResponse, UserId, WsResult};
 use axum::{
     async_trait,
@@ -191,13 +195,17 @@ impl UserInner {
     }
 
     pub fn send(&self, resp: WsResult) -> impl Future<Output = anyhow::Result<()>> {
-        tracing::debug!(
+        tracing::trace!(
             "Send to user={} Websocket message = {resp:?}",
             self.username()
         );
-        self.connection.send(Message::Binary(
-            bincode::serialize(&resp).unwrap_or_else(|_| panic!("cannot serialzie {resp:?}")),
-        ))
+        match bincode::serialize(&resp) {
+            Ok(bytes) => self.connection.send(Message::Binary(bytes)).left_future(),
+            Err(err) => {
+                tracing::error!("cannot serialize message {resp:?} for sending: {err}");
+                ready(Err(anyhow::anyhow!("cannot serialize message for sending"))).right_future()
+            }
+        }
     }
 
     pub fn do_send(&self, resp: WsResult) {
@@ -242,6 +250,7 @@ pub fn unwrap_name_or_unnamed(name: Option<String>) -> String {
 pub struct UserPool {
     db: DbPool,
     users: DashMap<UserId, Weak<UserInner>>,
+    prev_len: AtomicUsize,
 }
 
 impl UserPool {
@@ -249,6 +258,7 @@ impl UserPool {
         Self {
             db,
             users: DashMap::new(),
+            prev_len: AtomicUsize::new(0),
         }
     }
 
@@ -277,7 +287,11 @@ impl UserPool {
             }
         }
         self.users.retain(|_, user| user_check(user));
-        tracing::info!("users size = {}", self.users.len())
+        let cur_len = self.users.len();
+        if self.prev_len.load(Ordering::Relaxed) != cur_len {
+            self.prev_len.store(cur_len, Ordering::Relaxed);
+            tracing::info!("users size = {}", cur_len);
+        }
     }
 
     pub async fn user_ws_connect(&self, id: UserId, ws: WebSocket) {
@@ -310,12 +324,18 @@ impl UserPool {
         let msg: <StartWsApi as Api>::Response = Ok(StartWsResponse {
             username: user.name().to_string(),
         });
-        if let Ok(buf) = bincode::serialize(&msg) {
-            let _ = user.connection().send(Message::Binary(buf)).await;
-            tracing::debug!("User connection complete.");
-            user.send_status_update();
-        } else {
-            tracing::debug!("failed to serialize StartWsResult: {:?}", msg.unwrap_err());
+        match bincode::serialize(&msg) {
+            Ok(buf) => {
+                let _ = user.connection().send(Message::Binary(buf)).await;
+                tracing::debug!("User connection complete.");
+                user.send_status_update();
+            }
+            Err(err) => {
+                tracing::error!(
+                    "failed to serialize StartWsResult {:?}: {err}",
+                    msg.unwrap_err()
+                );
+            }
         }
     }
 }

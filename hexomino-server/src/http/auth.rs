@@ -6,6 +6,7 @@ use axum::{Extension, Json, TypedHeader};
 use crate::auth::authorize_jwt;
 use crate::http::JsonResponse;
 
+use crate::kernel::user::unwrap_name_or_unnamed;
 use crate::result::CommonError;
 use crate::{auth::create_jwt_token, DbPool};
 
@@ -33,7 +34,7 @@ pub async fn login_handler(
     Ok(Json(LoginResponse {
         me: api::User {
             id: UserId(user.id),
-            name: user.name.unwrap_or_else(|| "<Unnamed>".to_string()),
+            name: unwrap_name_or_unnamed(user.name),
         },
         token: create_jwt_token(user.id)
             .await

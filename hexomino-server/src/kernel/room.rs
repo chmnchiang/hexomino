@@ -42,10 +42,10 @@ impl RoomManagerHandle {
         self.cached_rooms.read().clone()
     }
     pub async fn create_room(&self, user: User) -> Result<RoomId> {
-        self.addr.send(CreateRoom { user }).await
+        self.addr.send(CreateRoom { user }).await?
     }
     pub async fn join_room(&self, user: User, room_id: RoomId) -> Result<()> {
-        self.addr.send(JoinRoom { user, room_id }).await
+        self.addr.send(JoinRoom { user, room_id }).await?
     }
     pub async fn create_or_join_match_room(
         &self,
@@ -54,16 +54,16 @@ impl RoomManagerHandle {
     ) -> Result<RoomId> {
         self.addr
             .send(CreateOrJoinMatchRoom { user, match_token })
-            .await
+            .await?
     }
     pub async fn leave_room(&self, user: User) -> Result<()> {
-        self.addr.send(LeaveRoom { user }).await
+        self.addr.send(LeaveRoom { user }).await?
     }
     pub async fn get_joined_room(&self, user: User) -> Result<api::JoinedRoom> {
-        self.addr.send(GetJoinedRoom { user }).await
+        self.addr.send(GetJoinedRoom { user }).await?
     }
     pub async fn user_room_action(&self, user: User, action: RoomAction) -> Result<()> {
-        self.addr.send(UserRoomAction { user, action }).await
+        self.addr.send(UserRoomAction { user, action }).await?
     }
 }
 
@@ -305,9 +305,10 @@ impl RoomManager {
 
     fn remove_room(&mut self, room_id: RoomId, match_token: Option<MatchToken>) {
         if let Some(match_token) = match_token {
-            self.match_token_to_room_id
-                .remove(&match_token)
-                .expect("match token is not in the hashmap");
+            if self.match_token_to_room_id
+                .remove(&match_token).is_none() {
+                tracing::warn!("match token {match_token} is not found in the map");
+            }
         }
         self.rooms.remove(&room_id);
     }

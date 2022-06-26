@@ -33,6 +33,7 @@ pub enum WsResponse {
     UserStatusUpdate(UserStatus),
     RoomUpdate(JoinedRoom),
     MatchEvent(MatchEvent),
+    NotifyError(WsNotifiedError),
 }
 
 pub enum UserStatus {
@@ -42,7 +43,12 @@ pub enum UserStatus {
 }
 
 #[derive(thiserror::Error)]
-pub enum WsError {}
+pub enum WsNotifiedError {
+    #[error("The game is canceled because one of the player disconnected before the game started.")]
+    GameCanceled,
+    #[error("The game crashed due to internal error. Please notify the admin and restart another game.")]
+    GameCrashed,
+}
 
 }
 

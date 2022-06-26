@@ -16,9 +16,9 @@ async fn main() {
         &std::env::var("SERVER_ADDR")
             .unwrap_or_else(|_| "127.0.0.1:3000".into())
             .parse()
-            .unwrap(),
+            .expect("failed to parse server address"),
     )
     .serve(make_app().await)
     .await
-    .unwrap();
+    .expect("failed to start server");
 }

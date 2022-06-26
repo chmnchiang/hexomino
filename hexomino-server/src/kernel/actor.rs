@@ -1,9 +1,10 @@
 use std::{future::Future, time::Duration};
+
 use tokio::{
     select, spawn,
     sync::{
         mpsc::{self, Sender, UnboundedSender},
-        oneshot,
+        oneshot::{self, error::RecvError},
     },
     time::sleep,
 };
@@ -21,16 +22,17 @@ pub trait Actor: Sized + Send + 'static {
                 let context = context;
                 loop {
                     select! {
+                        biased;
+                        msg = inner_receiver.recv() => {
+                            match msg.expect("inner_sender is dropped but shouldn't be") {
+                                FastMsg::Stop => return,
+                                FastMsg::Msg(msg) => msg.process_by(&mut self, &context),
+                            }
+                        }
                         msg = receiver.recv() => {
                             match msg {
                                 Some(msg) => msg.process_by(&mut self, &context),
                                 None => return
-                            }
-                        }
-                        msg = inner_receiver.recv() => {
-                            match msg.expect("inner_sender would never be dropped") {
-                                FastMsg::Stop => return,
-                                FastMsg::Msg(msg) => msg.process_by(&mut self, &context),
                             }
                         }
                     }
@@ -59,7 +61,7 @@ impl<A: Actor> Clone for Addr<A> {
 }
 
 impl<A: Actor> Addr<A> {
-    pub fn send<M>(&self, msg: M) -> impl Future<Output = <A as Handler<M>>::Output>
+    pub fn send<M>(&self, msg: M) -> impl Future<Output = anyhow::Result<<A as Handler<M>>::Output>>
     where
         A: Handler<M>,
         <A as Handler<M>>::Output: Send,
@@ -68,14 +70,14 @@ impl<A: Actor> Addr<A> {
         let (result_sender, result_receiver) = oneshot::channel();
         let sender = self.sender.clone();
         async move {
-            let _ = sender
+            sender
                 .send(Box::new(MsgReturnWrap {
                     msg,
                     respond_to: result_sender,
                 }))
                 .await
-                .map_err(|_| ());
-            result_receiver.await.expect("receive result failed")
+                .map_err(|_| anyhow::anyhow!("failed to send message to actor"))?;
+            Ok(result_receiver.await?)
         }
     }
 
@@ -89,7 +91,6 @@ impl<A: Actor> Addr<A> {
     }
 }
 
-#[allow(dead_code)]
 enum FastMsg<A: Actor> {
     Stop,
     Msg(SealedMsg<A>),
@@ -128,6 +129,10 @@ impl<A: Actor> Context<A> {
             sleep(after).await;
             let _ = inner_sender.send(FastMsg::Msg(Box::new(MsgNoReturnWrap(msg))));
         });
+    }
+
+    pub fn stop(&self) {
+        let _ = self.inner_sender.send(FastMsg::Stop);
     }
 }
 

@@ -1,13 +1,13 @@
 use std::time::Duration;
 
 use api::{
-    Api, JoinedRoom, MatchAction, MatchError, MatchHistoryNoGames, MatchState, Never, Room,
-    RoomAction, RoomError, RoomId, StartWsApi, StartWsError, StartWsRequest, UserId, WsRequest, MatchToken,
+    Api, JoinedRoom, MatchAction, MatchError, MatchHistoryNoGames, MatchState, MatchToken, Never,
+    Room, RoomAction, RoomError, RoomId, StartWsApi, StartWsError, StartWsRequest, UserId,
+    WsRequest,
 };
 use axum::extract::ws::{Message, WebSocket};
 use once_cell::sync::OnceCell;
 use tokio::{spawn, time::timeout};
-use tracing::{debug, error, trace};
 
 use crate::{
     auth::{authorize_jwt, Claims},
@@ -42,10 +42,13 @@ pub struct Kernel {
 
 async fn send_start_ws_error(mut ws: WebSocket, err: StartWsError) {
     let msg: <StartWsApi as Api>::Response = Err(err);
-    if let Ok(buf) = bincode::serialize(&msg) {
-        let _ = ws.send(Message::Binary(buf)).await;
-    } else {
-        debug!("failed to serialize StartWsResult: {:?}", msg.unwrap_err());
+    match bincode::serialize(&msg) {
+        Ok(buf) => {
+            let _ = ws.send(Message::Binary(buf)).await;
+        }
+        Err(err) => {
+            tracing::error!("failed to serialize StartWsResult {:?}: {}", msg, err);
+        }
     }
 }
 
@@ -100,7 +103,9 @@ impl Kernel {
         user: User,
         match_token: MatchToken,
     ) -> ApiResult<RoomId, RoomError> {
-        self.room_manager.create_or_join_match_room(user, match_token).await
+        self.room_manager
+            .create_or_join_match_room(user, match_token)
+            .await
     }
     pub async fn leave_room(&self, user: User) -> ApiResult<(), RoomError> {
         self.room_manager.leave_room(user).await
@@ -153,7 +158,7 @@ impl Kernel {
 
     async fn update(&self, message: KernelMsg) {
         use KernelMsg::*;
-        trace!("update message = {:?}", message);
+        tracing::trace!("Kernel update message = {:?}", message);
         match message {
             ConnectionLost(user) => user.drop_connection(),
             UserMessage(user, msg) => {
@@ -169,17 +174,15 @@ impl Kernel {
                 self.update(KernelMsg::ConnectionLost(user)).await;
                 return;
             }
-            Message::Ping(_) => return,
-            Message::Pong(_) => return,
+            Message::Ping(_) | Message::Pong(_) => return,
             _ => {
-                debug!("user send incorrect ws type");
+                tracing::debug!("user send incorrect ws type");
                 return;
             }
         };
-        if let Ok(msg) = bincode::deserialize::<WsRequest>(&msg) {
-            self.update(KernelMsg::UserMessage(user, msg)).await;
-        } else {
-            debug!("deserialize user data failed");
+        match bincode::deserialize::<WsRequest>(&msg) {
+            Ok(msg) => self.update(KernelMsg::UserMessage(user, msg)).await,
+            Err(err) => tracing::debug!("deserialize user data {msg:?} failed: {err}"),
         }
     }
 
@@ -195,11 +198,7 @@ async fn authorize_ws(ws: &mut WebSocket) -> Result<Claims, StartWsError> {
     let recv_future = timeout(WS_AUTH_TIMEOUT, ws.recv());
     let result = recv_future.await.map_err(|_| Timeout)?;
     let result = result.ok_or(InitialHandshakeFailed)?;
-    let result = result.map_err(|e| {
-        error!("received error when authorizing websocket: {}", e);
-        InternalError
-    })?;
-    if let Message::Binary(token) = result {
+    if let Ok(Message::Binary(token)) = result {
         let request =
             bincode::deserialize::<StartWsRequest>(&token).map_err(|_| InitialHandshakeFailed)?;
         Ok(authorize_jwt(&request.token).await.ok_or(WsAuthError)?)

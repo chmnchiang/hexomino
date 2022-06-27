@@ -1,5 +1,5 @@
 use hexomino_core::{Hexo, MovedHexo};
-use yew::{classes, html, Callback, Component, Context, Html, Properties};
+use yew::{html, Callback, Component, Context, Html, Properties};
 
 use super::bottom_message::BottomMessage;
 use crate::{

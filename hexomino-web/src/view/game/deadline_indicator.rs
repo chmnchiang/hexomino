@@ -3,14 +3,14 @@ use chrono::Utc;
 use gloo::render::{request_animation_frame, AnimationFrame};
 use yew::{classes, function_component, html, use_effect, use_mut_ref, use_state, Properties};
 
-#[derive(PartialEq, Properties)]
+#[derive(PartialEq, Eq, Properties)]
 pub struct DeadlineIndicatorProps {
     pub deadline: Deadline,
 }
 
 #[function_component(DeadlineIndicator)]
 pub fn deadline_indicator(props: &DeadlineIndicatorProps) -> Html {
-    let current_time = use_state(|| Utc::now());
+    let current_time = use_state(Utc::now);
 
     let animation_frame_handle = use_mut_ref::<Option<AnimationFrame>>(|| None);
     {

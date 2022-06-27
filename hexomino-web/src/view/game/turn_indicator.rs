@@ -23,9 +23,9 @@ pub fn player_color_style(is_me: bool, opacity: f64) -> String {
 
 pub fn player_hint_color_style(is_me: bool) -> String {
     if is_me {
-        format!("fill: rgb(48, 240, 32)")
+        "fill: rgb(48, 240, 32)".to_string()
     } else {
-        format!("fill: rgb(240, 48, 32)")
+        "fill: rgb(240, 48, 32)".to_string()
     }
 }
 

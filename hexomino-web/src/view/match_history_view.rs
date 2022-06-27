@@ -1,7 +1,7 @@
 use api::{ListUserMatchHistoriesApi, MatchConfig, MatchHistoryNoGames};
 use wasm_bindgen_futures::spawn_local;
 use yew::{
-    function_component, html, use_context, use_effect, use_effect_with_deps, use_state, Html,
+    function_component, html, use_context, use_effect_with_deps, use_state, Html,
 };
 
 use crate::{context::MainContext, util::ResultExt};
@@ -10,7 +10,7 @@ use super::common::match_token_html;
 
 #[function_component(MatchHistoryView)]
 pub fn match_history_view(_props: &()) -> Html {
-    let match_histories = use_state(|| Vec::<MatchHistoryNoGames>::new());
+    let match_histories = use_state(Vec::<MatchHistoryNoGames>::new);
     let context = use_context::<MainContext>().expect("cannot get context");
 
     {
@@ -33,7 +33,7 @@ pub fn match_history_view(_props: &()) -> Html {
 
     fn history_to_row(
         MatchHistoryNoGames {
-            id,
+            id: _,
             users,
             user_is_first,
             scores,

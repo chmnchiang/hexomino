@@ -1,5 +1,4 @@
 use std::{
-    cell::Cell,
     future::{ready, Future},
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -7,7 +6,7 @@ use std::{
     },
 };
 
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow};
 use api::{Api, RoomId, StartWsApi, StartWsError, StartWsResponse, UserId, WsResult};
 use axum::{
     async_trait,

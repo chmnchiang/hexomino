@@ -1,7 +1,7 @@
 use api::GameEndReason;
 use gloo::{events::EventListener, utils::window};
 
-use hexomino_core::Player;
+
 use piet_web::WebRenderContext;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};

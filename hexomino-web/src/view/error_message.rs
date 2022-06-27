@@ -1,10 +1,9 @@
 use std::time::Duration;
 
 use gloo::timers::callback::Timeout;
-use wasm_bindgen_futures::spawn_local;
+
 use yew::{
-    function_component, html, use_context, use_effect, use_effect_with_deps, use_state, Callback,
-    Html,
+    function_component, html, use_context, use_effect_with_deps, use_state, Callback,
 };
 
 use crate::context::MainContext;
@@ -12,7 +11,7 @@ use crate::context::MainContext;
 const ERROR_MESSAGE_TIMEOUT: Duration = Duration::from_secs(6);
 
 #[function_component(ErrorMessageView)]
-pub fn error_message_view(props: &()) -> Html {
+pub fn error_message_view(_props: &()) -> Html {
     let error = use_state(|| -> Option<String> { None });
     let timeout = use_state(|| -> Option<Timeout> { None });
     let callback = {

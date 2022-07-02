@@ -1,4 +1,5 @@
 use api::{ListUserMatchHistoriesApi, MatchConfig, MatchHistoryNoGames};
+use chrono::{DateTime, Local};
 use wasm_bindgen_futures::spawn_local;
 use yew::{
     function_component, html, use_context, use_effect_with_deps, use_state, Html,
@@ -50,6 +51,7 @@ pub fn match_history_view(_props: &()) -> Html {
             Some(MatchConfig::ChampionshipStage) => "Championship",
             None => "?",
         };
+        let end_time_local = DateTime::<Local>::from(*end_time);
         html! {
             <tr>
                 <td style="text-align: right" class={user_is_first.then_some("my-score")}>
@@ -67,7 +69,7 @@ pub fn match_history_view(_props: &()) -> Html {
                         <span class="icon"><i class="fas fa-trophy"></i></span>
                     }
                 </td>
-                <td>{end_time.format("%F %R")}</td>
+                <td>{end_time_local.format("%F %R")}</td>
                 <td>{match_token_html(match_token, false)}</td>
                 <td>{config}</td>
             </tr>

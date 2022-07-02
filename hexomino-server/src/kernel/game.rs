@@ -590,7 +590,7 @@ impl MatchState {
         let scores = self.scores();
         match scores[0].cmp(&scores[1]) {
             Ordering::Greater => Some(0),
-            Ordering::Less => Some(0),
+            Ordering::Less => Some(1),
             Ordering::Equal => None,
         }
     }

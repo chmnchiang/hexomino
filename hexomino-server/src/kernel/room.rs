@@ -320,7 +320,7 @@ impl Room {
             id,
             match_token,
             users: vec![],
-            config: MatchConfig::Normal,
+            config: MatchConfig::KnockoutStage,
         }
     }
 

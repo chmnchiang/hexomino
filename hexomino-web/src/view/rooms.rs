@@ -28,7 +28,7 @@ pub enum RoomsMsg {
     UpdateFilter(String),
 }
 
-const REFRESH_INTERVAL: u32 = 6_000;
+const REFRESH_INTERVAL: u32 = 10_000;
 
 impl Component for RoomsView {
     type Message = RoomsMsg;

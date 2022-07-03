@@ -47,6 +47,7 @@ pub struct GameState {
     core: hexomino_core::State,
     #[getset(get_copy = "pub")]
     me: Player,
+    #[getset(get_copy = "pub")]
     num_action: usize,
     #[getset(get = "pub")]
     end_state: Option<GameEndState>,

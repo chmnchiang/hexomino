@@ -18,6 +18,8 @@ pub struct EndViewProps {
     pub state: SharedGameState,
     #[prop_or(["Player 1".to_string(), "Player 2".to_string()])]
     pub names: [String; 2],
+    #[prop_or(0)]
+    pub nonce: usize,
 }
 
 struct RenderState {

@@ -237,7 +237,10 @@ impl GameView {
                             }
                         }
                         MatchPhase::GameEnded => html!{
-                            <EndView state={game_state.clone()} names={mtch.names_ord_by_player()}/>
+                            <EndView state={game_state.clone()} names={mtch.names_ord_by_player()}
+                            // FIXME: Proper handle re-render
+                            nonce={game_state_borrow.num_action()}
+                            />
                         },
                         _ => html!(),
                     }

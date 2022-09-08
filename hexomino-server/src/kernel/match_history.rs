@@ -10,6 +10,7 @@ use crate::result::ApiResult;
 
 use super::{user::unwrap_name_or_unnamed, Kernel};
 
+#[cfg(feature = "competition-mode")]
 pub struct MatchHistory {
     info: MatchInfo,
     scores: [u32; 2],
@@ -30,6 +31,7 @@ struct GameHistory {
     end_reason: GameEndReason,
 }
 
+#[cfg(feature = "competition-mode")]
 impl MatchHistory {
     pub fn new(info: MatchInfo) -> Self {
         Self {
@@ -124,6 +126,31 @@ impl MatchHistory {
         Ok(())
     }
 }
+
+#[cfg(not(feature = "competition-mode"))]
+pub struct MatchHistory;
+
+#[cfg(not(feature = "competition-mode"))]
+impl MatchHistory {
+    pub fn new(_info: MatchInfo) -> Self {
+        Self
+    }
+
+    pub fn add_game(
+        &mut self,
+        _first_user_player: Player,
+        _actions: Vec<Action>,
+        _winner: Player,
+        _end_reason: GameEndReason,
+    ) {
+    }
+
+    pub async fn save(self, _end_time: DateTime<Utc>) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "competition-mode")]
 struct Record {
     id: Uuid,
     user_is_first: Option<bool>,
@@ -135,6 +162,7 @@ struct Record {
     match_token: Option<String>,
 }
 
+#[cfg(feature = "competition-mode")]
 impl Record {
     fn try_into_api(self) -> Result<MatchHistoryNoGames> {
         let id = MatchId(self.id);
@@ -161,6 +189,7 @@ impl Record {
     }
 }
 
+#[cfg(feature = "competition-mode")]
 pub async fn list_user_match_histories(user: UserId) -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
     let result = sqlx::query_as!(
         Record,
@@ -188,6 +217,12 @@ pub async fn list_user_match_histories(user: UserId) -> ApiResult<Vec<MatchHisto
         .collect::<Result<Vec<MatchHistoryNoGames>>>()?)
 }
 
+#[cfg(not(feature = "competition-mode"))]
+pub async fn list_user_match_histories(_user: UserId) -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
+    Ok(vec![])
+}
+
+#[cfg(feature = "competition-mode")]
 pub async fn list_all_match_histories() -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
     let result = sqlx::query_as!(
         Record,
@@ -209,4 +244,9 @@ pub async fn list_all_match_histories() -> ApiResult<Vec<MatchHistoryNoGames>, N
         .into_iter()
         .map(|r| r.try_into_api())
         .collect::<Result<Vec<MatchHistoryNoGames>>>()?)
+}
+
+#[cfg(not(feature = "competition-mode"))]
+pub async fn list_all_match_histories() -> ApiResult<Vec<MatchHistoryNoGames>, Never> {
+    Ok(vec![])
 }

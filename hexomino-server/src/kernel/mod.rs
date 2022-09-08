@@ -12,8 +12,10 @@ use tokio::{spawn, time::timeout};
 use crate::{
     auth::{authorize_jwt, Claims},
     result::ApiResult,
-    DbPool,
 };
+
+#[cfg(feature = "competition-mode")]
+use crate::DbPool;
 
 use self::{
     match_history::{list_all_match_histories, list_user_match_histories},
@@ -37,6 +39,7 @@ enum KernelMsg {
 pub struct Kernel {
     user_pool: UserPool,
     room_manager: RoomManagerHandle,
+    #[cfg(feature = "competition-mode")]
     db: DbPool,
 }
 
@@ -55,12 +58,26 @@ async fn send_start_ws_error(mut ws: WebSocket, err: StartWsError) {
 static KERNEL: OnceCell<Kernel> = OnceCell::new();
 
 impl Kernel {
+    #[cfg(feature = "competition-mode")]
     pub fn init(db: DbPool) {
         KERNEL
             .set(Self {
                 room_manager: RoomManagerHandle::new(),
                 user_pool: UserPool::new(db.clone()),
                 db,
+            })
+            .map_err(|_| ())
+            .expect("kernel is initialized twice");
+
+        Kernel::spawn_services();
+    }
+
+    #[cfg(not(feature = "competition-mode"))]
+    pub fn init() {
+        KERNEL
+            .set(Self {
+                room_manager: RoomManagerHandle::new(),
+                user_pool: UserPool::new(),
             })
             .map_err(|_| ())
             .expect("kernel is initialized twice");
@@ -76,15 +93,23 @@ impl Kernel {
     pub async fn new_connection(&self, mut ws: WebSocket) {
         let result = authorize_ws(&mut ws).await;
         match result {
+            #[cfg(feature = "competition-mode")]
             Ok(claims) => self.user_pool.user_ws_connect(UserId(claims.id), ws).await,
+            #[cfg(not(feature = "competition-mode"))]
+            Ok(claims) => self.user_pool.user_ws_connect(claims, ws).await,
             Err(err) => send_start_ws_error(ws, err).await,
         }
     }
 }
 
 impl Kernel {
+    #[cfg(feature = "competition-mode")]
     pub async fn get_user(&self, user_id: UserId) -> Option<User> {
         self.user_pool.get(user_id)
+    }
+    #[cfg(not(feature = "competition-mode"))]
+    pub async fn get_user(&self, username: String) -> Option<User> {
+        self.user_pool.get(username)
     }
     pub async fn get_room(&self, user: User) -> ApiResult<JoinedRoom, RoomError> {
         self.room_manager.get_joined_room(user).await

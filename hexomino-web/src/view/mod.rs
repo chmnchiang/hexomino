@@ -21,7 +21,8 @@ use self::{
     match_history_view::MatchHistoryView,
     room::RoomView,
     rooms::RoomsView,
-    ws_reconnect::WsReconnectModal, rule_view::RuleView,
+    rule_view::RuleView,
+    ws_reconnect::WsReconnectModal,
 };
 
 mod common;
@@ -29,9 +30,9 @@ mod error_message;
 mod game;
 mod login_view;
 mod match_history_view;
-mod rule_view;
 mod room;
 mod rooms;
+mod rule_view;
 mod shared_link;
 mod util;
 mod ws_reconnect;
@@ -302,14 +303,22 @@ impl MainView {
                 <div class={classes!["navbar-menu", self.show_mobile_navbar.then_some("is-active")]}>
                     <div class="navbar-start">
                         {
-                            [
-                                (Route::Rooms, "Public Games"),
-                                (Route::AiGame, "AI Game"),
-                                (Route::MatchHistory, "Match History"),
-                                (Route::Rule, "Game Rules"),
-                            ].iter()
-                                 .map(|(target, text)| navbar_item_html(*target, text))
-                                 .collect::<Html>()
+                            if cfg!(feature = "competition-mode") {
+                                vec![
+                                    (Route::Rooms, "Public Games"),
+                                    (Route::AiGame, "AI Game"),
+                                    (Route::MatchHistory, "Match History"),
+                                    (Route::Rule, "Game Rules"),
+                                ]
+                            } else {
+                                vec![
+                                    (Route::Rooms, "Public Games"),
+                                    (Route::AiGame, "AI Game"),
+                                    (Route::Rule, "Game Rules"),
+                                ]
+                            }.iter()
+                                .map(|(target, text)| navbar_item_html(*target, text))
+                                .collect::<Html>()
                         }
                     </div>
                     <div class="navbar-end">

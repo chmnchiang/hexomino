@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use anyhow::{anyhow};
+use anyhow::anyhow;
 use api::{Api, RoomId, StartWsApi, StartWsError, StartWsResponse, UserId, WsResult};
 use axum::{
     async_trait,
@@ -29,11 +29,13 @@ use stream_cancel::{StreamExt as _, TakeUntilIf, Trigger, Tripwire};
 use tokio::{spawn, sync::Mutex};
 
 use crate::{
-    auth::authorize_jwt,
+    auth::{authorize_jwt, Claims},
     kernel::{send_start_ws_error, Kernel},
     result::CommonError,
-    DbPool,
 };
+
+#[cfg(feature = "competition-mode")]
+use crate::DbPool;
 
 use super::game::MatchHandle;
 
@@ -223,6 +225,7 @@ impl UserInner {
 }
 
 impl UserData {
+    #[cfg(feature = "competition-mode")]
     async fn fetch(db: &DbPool, UserId(id): UserId) -> Option<Self> {
         let user = sqlx::query!(
             r#"
@@ -246,13 +249,21 @@ pub fn unwrap_name_or_unnamed(name: Option<String>) -> String {
     name.unwrap_or_else(|| "<Unnamed>".to_string())
 }
 
+#[cfg(feature = "competition-mode")]
 pub struct UserPool {
     db: DbPool,
     users: DashMap<UserId, Weak<UserInner>>,
     prev_len: AtomicUsize,
 }
 
+#[cfg(not(feature = "competition-mode"))]
+pub struct UserPool {
+    users: DashMap<String, Weak<UserInner>>,
+    prev_len: AtomicUsize,
+}
+
 impl UserPool {
+    #[cfg(feature = "competition-mode")]
     pub fn new(db: DbPool) -> Self {
         Self {
             db,
@@ -261,9 +272,33 @@ impl UserPool {
         }
     }
 
+    #[cfg(not(feature = "competition-mode"))]
+    pub fn new() -> Self {
+        Self {
+            users: DashMap::new(),
+            prev_len: AtomicUsize::new(0),
+        }
+    }
+
+    #[cfg(feature = "competition-mode")]
     pub fn get(&self, id: UserId) -> Option<User> {
         use dashmap::mapref::entry::Entry::*;
         match self.users.entry(id) {
+            Occupied(occupied) => match occupied.get().upgrade() {
+                Some(user) => Some(User(user)),
+                None => {
+                    occupied.remove();
+                    None
+                }
+            },
+            Vacant(_) => None,
+        }
+    }
+
+    #[cfg(not(feature = "competition-mode"))]
+    pub fn get(&self, username: String) -> Option<User> {
+        use dashmap::mapref::entry::Entry::*;
+        match self.users.entry(username) {
             Occupied(occupied) => match occupied.get().upgrade() {
                 Some(user) => Some(User(user)),
                 None => {
@@ -293,6 +328,7 @@ impl UserPool {
         }
     }
 
+    #[cfg(feature = "competition-mode")]
     pub async fn user_ws_connect(&self, id: UserId, ws: WebSocket) {
         let user = if let Some(user) = self.get(id) {
             user
@@ -319,6 +355,50 @@ impl UserPool {
         let ws_stream = user.connection.set(ws);
         spawn(connection_recv_loop(user.clone(), ws_stream));
         self.users.insert(user.id(), Arc::downgrade(&user.0));
+
+        let msg: <StartWsApi as Api>::Response = Ok(StartWsResponse {
+            username: user.name().to_string(),
+        });
+        match bincode::serialize(&msg) {
+            Ok(buf) => {
+                let _ = user.connection().send(Message::Binary(buf)).await;
+                tracing::debug!("User connection complete.");
+                user.send_status_update();
+            }
+            Err(err) => {
+                tracing::error!(
+                    "failed to serialize StartWsResult {:?}: {err}",
+                    msg.unwrap_err()
+                );
+            }
+        }
+    }
+
+    #[cfg(not(feature = "competition-mode"))]
+    pub async fn user_ws_connect(&self, claims: Claims, ws: WebSocket) {
+        use uuid::Uuid;
+
+        let user = if let Some(user) = self.get(claims.username.clone()) {
+            user
+        } else {
+            let data = UserData {
+                username: claims.username.clone(),
+                name: claims.username.clone(),
+            };
+            let user = UserInner {
+                id: UserId(claims.id),
+                data,
+                state: RwLock::new(UserState {
+                    status: UserStatus::Idle,
+                }),
+                connection: Connection::new(),
+            };
+
+            User(Arc::new(user))
+        };
+        let ws_stream = user.connection.set(ws);
+        spawn(connection_recv_loop(user.clone(), ws_stream));
+        self.users.insert(claims.username, Arc::downgrade(&user.0));
 
         let msg: <StartWsApi as Api>::Response = Ok(StartWsResponse {
             username: user.name().to_string(),
@@ -373,6 +453,7 @@ impl UserStatus {
 impl<B: Send> FromRequest<B> for User {
     type Rejection = CommonError;
 
+    #[cfg(feature = "competition-mode")]
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
         let TypedHeader(Authorization(bearer)) =
             TypedHeader::<Authorization<Bearer>>::from_request(req)
@@ -384,6 +465,22 @@ impl<B: Send> FromRequest<B> for User {
             .ok_or(CommonError::Unauthorized)?;
         Kernel::get()
             .get_user(UserId(claims.id))
+            .await
+            .ok_or(CommonError::Unauthorized)
+    }
+
+    #[cfg(not(feature = "competition-mode"))]
+    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let TypedHeader(Authorization(bearer)) =
+            TypedHeader::<Authorization<Bearer>>::from_request(req)
+                .await
+                .map_err(|_| CommonError::Unauthorized)?;
+
+        let claims = authorize_jwt(bearer.token())
+            .await
+            .ok_or(CommonError::Unauthorized)?;
+        Kernel::get()
+            .get_user(claims.username)
             .await
             .ok_or(CommonError::Unauthorized)
     }

@@ -1,4 +1,4 @@
-use std::{lazy::OnceCell, rc::Rc};
+use std::{cell::OnceCell, rc::Rc};
 
 use yew::{html::Scope, Callback, Component};
 

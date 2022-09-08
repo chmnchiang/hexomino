@@ -45,3 +45,4 @@ anyhow = "1.0.56"
 
 [features]
 internal-debug = []
+competition-mode = []

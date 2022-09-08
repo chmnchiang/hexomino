@@ -2,14 +2,19 @@ use api::{Api, LoginRequest, LoginResponse, RefreshTokenApi, RefreshTokenRespons
 use axum::headers::authorization::Bearer;
 use axum::headers::Authorization;
 use axum::{Extension, Json, TypedHeader};
+use uuid::Uuid;
 
 use crate::auth::authorize_jwt;
 use crate::http::JsonResponse;
 
+use crate::auth::create_jwt_token;
 use crate::kernel::user::unwrap_name_or_unnamed;
 use crate::result::CommonError;
-use crate::{auth::create_jwt_token, DbPool};
 
+#[cfg(feature = "competition-mode")]
+use crate::DbPool;
+
+#[cfg(feature = "competition-mode")]
 pub async fn login_handler(
     Json(request): Json<LoginRequest>,
     Extension(db): Extension<DbPool>,
@@ -42,6 +47,25 @@ pub async fn login_handler(
     }))
 }
 
+#[cfg(not(feature = "competition-mode"))]
+pub async fn login_handler(Json(request): Json<LoginRequest>) -> JsonResponse<LoginResponse> {
+    if request.username.is_empty() || request.username.len() > 10 {
+        return Err(CommonError::Unauthorized);
+    }
+    let id = Uuid::new_v4();
+    let token = create_jwt_token(id, request.username.clone())
+        .await
+        .ok_or(CommonError::Unauthorized)?;
+    Ok(Json(LoginResponse {
+        me: api::User {
+            id: UserId(id),
+            name: request.username,
+        },
+        token,
+    }))
+}
+
+#[cfg(feature = "competition-mode")]
 pub async fn refresh_token_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Extension(db): Extension<DbPool>,
@@ -66,6 +90,25 @@ pub async fn refresh_token_handler(
             name: user.name.unwrap_or_else(|| "<Unnamed>".to_string()),
         },
         token: create_jwt_token(user.id)
+            .await
+            .ok_or(CommonError::Unauthorized)?,
+    }))
+}
+
+#[cfg(not(feature = "competition-mode"))]
+pub async fn refresh_token_handler(
+    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+) -> JsonResponse<<RefreshTokenApi as Api>::Response> {
+    let claim = authorize_jwt(bearer.token())
+        .await
+        .ok_or(CommonError::Unauthorized)?;
+
+    Ok(Json(RefreshTokenResponse {
+        me: api::User {
+            id: UserId(claim.id),
+            name: claim.username.clone(),
+        },
+        token: create_jwt_token(claim.id, claim.username)
             .await
             .ok_or(CommonError::Unauthorized)?,
     }))

@@ -9,6 +9,7 @@ edition = "2021"
 
 [features]
 default = ["wee_alloc"]
+competition-mode = []
 
 [dependencies]
 anyhow = "1.0"

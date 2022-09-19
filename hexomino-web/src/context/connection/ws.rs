@@ -56,7 +56,14 @@ impl WsConnection {
             .context("cannot get location")?
             .host()
             .map_err(|_| anyhow!("cannot get host"))?;
-        let mut ws = WebSocket::open(&format!("ws://{host}/ws")).anyhow()?;
+
+        log::info!("feat = {}", cfg!(feature = "enable-https"));
+        let ws_address = if cfg!(feature = "enable-https") {
+            format!("wss://{host}/ws")
+        } else {
+            format!("ws://{host}/ws")
+        };
+        let mut ws = WebSocket::open(&ws_address).anyhow()?;
         let result: Result<_> = (|| async {
             let msg = bincode::serialize(&StartWsRequest { token }).anyhow()?;
             ws.send(Message::Bytes(msg)).await.anyhow()?;

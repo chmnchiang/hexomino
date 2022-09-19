@@ -8,8 +8,9 @@ readme = "README.md"
 edition = "2021"
 
 [features]
-default = ["wee_alloc"]
+default = ["wee_alloc", "enable-https"]
 competition-mode = []
+enable-https = []
 
 [dependencies]
 anyhow = "1.0"
